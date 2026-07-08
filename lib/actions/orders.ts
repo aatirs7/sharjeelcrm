@@ -5,6 +5,11 @@ import { eq } from 'drizzle-orm'
 import { db } from '../db'
 import { orders, orderStatus, paymentStatus, paymentMethod } from '../db/schema'
 import { requireRep } from '../auth'
+import {
+  createDeliveryFollowupTasks,
+  autoCompleteProofTask,
+  autoCompleteBuyerConfirmTask,
+} from '../automations'
 
 type OrderStatusValue = (typeof orderStatus.enumValues)[number]
 type PaymentStatusValue = (typeof paymentStatus.enumValues)[number]
@@ -62,10 +67,7 @@ export async function setOrderStatus(
 /**
  * Rule 4 — mark delivered: set deliveredAt = now, deliveryStatus = delivered,
  * warrantyStart = deliveredAt, warrantyEnd = warrantyStart + warrantyDays,
- * status = delivered.
- *
- * TODO(M5): also fire rule 5 — insert `upload_proof` + `buyer_confirmation`
- * tasks (due +48h) here.
+ * status = delivered. Then fires rule 5 (proof + buyer-confirmation tasks).
  */
 export async function markDelivered(id: string): Promise<void> {
   await requireRep()
@@ -85,25 +87,27 @@ export async function markDelivered(id: string): Promise<void> {
       status: 'delivered',
     })
     .where(eq(orders.id, id))
+  await createDeliveryFollowupTasks(id) // rule 5
   revalidateOrder(id)
+  revalidatePath('/')
 }
 
 /**
- * Set the delivery-proof URL. TODO(M5): auto-complete the open `upload_proof`
- * task for this order when a URL is set.
+ * Set the delivery-proof URL. When a URL is set, auto-completes the open
+ * `upload_proof` task (rule 5).
  */
 export async function setDeliveryProof(id: string, url: string | null): Promise<void> {
   await requireRep()
-  await db
-    .update(orders)
-    .set({ deliveryProofUrl: url?.trim() || null })
-    .where(eq(orders.id, id))
+  const cleaned = url?.trim() || null
+  await db.update(orders).set({ deliveryProofUrl: cleaned }).where(eq(orders.id, id))
+  if (cleaned) await autoCompleteProofTask(id)
   revalidateOrder(id)
+  revalidatePath('/')
 }
 
 /**
- * Toggle buyer confirmation. Stamps buyerConfirmedAt when set true.
- * TODO(M5): auto-complete the open `buyer_confirmation` task when confirmed.
+ * Toggle buyer confirmation. Stamps buyerConfirmedAt when set true and
+ * auto-completes the open `buyer_confirmation` task (rule 5).
  */
 export async function setBuyerConfirmed(id: string, confirmed: boolean): Promise<void> {
   await requireRep()
@@ -111,5 +115,7 @@ export async function setBuyerConfirmed(id: string, confirmed: boolean): Promise
     .update(orders)
     .set({ buyerConfirmed: confirmed, buyerConfirmedAt: confirmed ? new Date() : null })
     .where(eq(orders.id, id))
+  if (confirmed) await autoCompleteBuyerConfirmTask(id)
   revalidateOrder(id)
+  revalidatePath('/')
 }

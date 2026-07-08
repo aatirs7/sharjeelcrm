@@ -1,5 +1,6 @@
 import { getCurrentRep } from "@/lib/auth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { TaskInbox } from "@/components/tasks/task-inbox";
 
 export default async function DashboardPage() {
   const rep = await getCurrentRep();
@@ -31,16 +32,13 @@ export default async function DashboardPage() {
         )}
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Task inbox</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm text-muted-foreground">
-            Metrics and the task inbox arrive in M5–M7. This is the M1 shell.
-          </p>
-        </CardContent>
-      </Card>
+      {rep ? (
+        <TaskInbox repId={rep.id} />
+      ) : (
+        <Card>
+          <CardContent className="py-6 text-sm text-muted-foreground">Loading…</CardContent>
+        </Card>
+      )}
     </div>
   );
 }
