@@ -21,6 +21,13 @@ export const ORDER_STATUS_CLASSES: Record<string, string> = {
   chargeback: 'bg-red-200 text-red-900 dark:bg-red-950 dark:text-red-300',
 }
 
+export const WARRANTY_STATE_CLASSES: Record<string, string> = {
+  none: 'bg-muted text-muted-foreground',
+  active: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300',
+  expiring: 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300',
+  expired: 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300',
+}
+
 export const RISK_STATUS_CLASSES: Record<string, string> = {
   good: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300',
   watch: 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300',

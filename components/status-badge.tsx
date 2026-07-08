@@ -4,6 +4,7 @@ import {
   LEAD_STATUS_CLASSES,
   ORDER_STATUS_CLASSES,
   RISK_STATUS_CLASSES,
+  WARRANTY_STATE_CLASSES,
 } from '@/lib/labels'
 
 function Pill({ value, classes }: { value: string; classes: string }) {
@@ -29,4 +30,8 @@ export function OrderStatusBadge({ status }: { status: string }) {
 
 export function RiskStatusBadge({ status }: { status: string }) {
   return <Pill value={status} classes={RISK_STATUS_CLASSES[status] ?? 'bg-muted text-foreground'} />
+}
+
+export function WarrantyBadge({ state }: { state: string }) {
+  return <Pill value={state} classes={WARRANTY_STATE_CLASSES[state] ?? 'bg-muted text-foreground'} />
 }

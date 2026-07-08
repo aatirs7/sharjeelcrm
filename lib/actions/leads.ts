@@ -166,9 +166,5 @@ export async function convertLeadToOrder(id: string, input: ConvertLeadInput): P
   revalidatePath('/leads')
   revalidatePath(`/leads/${id}`)
   revalidatePath('/orders')
-  // /orders/[id] lands in M4; until then this resolves to a 404 shell, so send
-  // the rep back to the lead which now shows the linked order.
-  redirect(`/leads/${id}`)
-  // Keep `order` referenced for the future redirect target.
-  void order
+  redirect(`/orders/${order.id}`)
 }
