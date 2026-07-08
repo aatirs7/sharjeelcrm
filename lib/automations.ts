@@ -10,11 +10,12 @@
  *   rule 6 (warranty expiry)                       — M8 daily cron
  *   rules 7, 8 (customer / affiliate rollups)      — M6
  */
-import { and, eq } from 'drizzle-orm'
+import { and, eq, gte, lte, ne } from 'drizzle-orm'
 import { db } from './db'
 import { affiliates, customers, leads, orders, tasks } from './db/schema'
 
 const HOUR = 3_600_000
+const DAY = 24 * HOUR
 
 /** Resolve the rep a task should go to for an order — via its origin lead. */
 async function repForOrder(orderId: string): Promise<string | null> {
@@ -178,4 +179,35 @@ export async function recomputeOrderRollups(orderId: string): Promise<void> {
   if (!order) return
   await recomputeCustomerRollups(order.customerId)
   if (order.affiliateId) await recomputeAffiliateRollups(order.affiliateId)
+}
+
+/**
+ * Rule 6 — flag warranties expiring within 7 days as `warranty_expiry` tasks
+ * (orders with warrantyEnd in [now, now+7d], status not closed, no existing open
+ * warranty_expiry task). Run by the daily cron. Returns how many were created.
+ */
+export async function flagExpiringWarranties(): Promise<number> {
+  const now = new Date()
+  const soon = new Date(now.getTime() + 7 * DAY)
+
+  const candidates = await db
+    .select()
+    .from(orders)
+    .where(
+      and(gte(orders.warrantyEnd, now), lte(orders.warrantyEnd, soon), ne(orders.status, 'closed'))
+    )
+
+  let created = 0
+  for (const o of candidates) {
+    if (await hasOpenTask(o.id, 'warranty_expiry')) continue
+    await db.insert(tasks).values({
+      type: 'warranty_expiry',
+      title: `Warranty expiring soon: ${o.package}`,
+      dueAt: o.warrantyEnd,
+      orderId: o.id,
+      assignedRepId: await repForOrder(o.id),
+    })
+    created++
+  }
+  return created
 }
