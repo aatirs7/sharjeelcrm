@@ -14,6 +14,7 @@ import { MarkDeliveredButton } from '@/components/orders/mark-delivered-button'
 import { OrderProofForm } from '@/components/orders/order-proof-form'
 import { BuyerConfirmToggle } from '@/components/orders/buyer-confirm-toggle'
 import { OrderStatusChanger } from '@/components/orders/order-status-changer'
+import { ReportIssueDialog } from '@/components/issues/report-issue-dialog'
 
 function Row({ label, value }: { label: string; value: React.ReactNode }) {
   return (
@@ -161,8 +162,9 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
         </Card>
 
         <Card>
-          <CardHeader>
+          <CardHeader className="flex-row items-center justify-between">
             <CardTitle className="text-base">Issues</CardTitle>
+            <ReportIssueDialog orderId={order.id} />
           </CardHeader>
           <CardContent>
             {orderIssues.length === 0 ? (

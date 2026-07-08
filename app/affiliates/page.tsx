@@ -1,8 +1,99 @@
-export default function AffiliatesPlaceholder() {
+import { desc } from 'drizzle-orm'
+import { db } from '@/lib/db'
+
+export const dynamic = 'force-dynamic'
+import { affiliates } from '@/lib/db/schema'
+import { formatCents } from '@/lib/money'
+import { Button } from '@/components/ui/button'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
+import { AffiliateFormDialog } from '@/components/affiliates/affiliate-form-dialog'
+import { MarkCommissionPaid } from '@/components/affiliates/mark-commission-paid'
+
+export default async function AffiliatesPage() {
+  const rows = await db.select().from(affiliates).orderBy(desc(affiliates.revenueCents))
+
   return (
-    <div className="space-y-2">
-      <h1 className="text-2xl font-semibold tracking-tight">Affiliates</h1>
-      <p className="text-sm text-muted-foreground">Arrives in M6.</p>
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Affiliates</h1>
+          <p className="text-sm text-muted-foreground">{rows.length} total</p>
+        </div>
+        <AffiliateFormDialog mode="create" trigger={<Button>Add affiliate</Button>} />
+      </div>
+
+      <div className="rounded-lg border">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Name</TableHead>
+              <TableHead className="text-right">Rate</TableHead>
+              <TableHead className="text-right">Sales</TableHead>
+              <TableHead className="text-right">Revenue</TableHead>
+              <TableHead className="text-right">Owed</TableHead>
+              <TableHead className="text-right">Paid</TableHead>
+              <TableHead className="text-right">Actions</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {rows.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                  No affiliates yet.
+                </TableCell>
+              </TableRow>
+            )}
+            {rows.map((a) => (
+              <TableRow key={a.id}>
+                <TableCell className="font-medium">
+                  {a.name}
+                  {a.discordUsername && (
+                    <div className="text-xs text-muted-foreground">{a.discordUsername}</div>
+                  )}
+                </TableCell>
+                <TableCell className="text-right tabular-nums">
+                  {(Number(a.commissionRate) * 100).toFixed(0)}%
+                </TableCell>
+                <TableCell className="text-right tabular-nums">{a.closedSalesCount}</TableCell>
+                <TableCell className="text-right tabular-nums">{formatCents(a.revenueCents)}</TableCell>
+                <TableCell className="text-right tabular-nums font-medium">
+                  {formatCents(a.commissionOwedCents)}
+                </TableCell>
+                <TableCell className="text-right tabular-nums text-muted-foreground">
+                  {formatCents(a.commissionPaidCents)}
+                </TableCell>
+                <TableCell>
+                  <div className="flex items-center justify-end gap-2">
+                    <MarkCommissionPaid affiliateId={a.id} owedCents={a.commissionOwedCents} />
+                    <AffiliateFormDialog
+                      mode="edit"
+                      affiliate={{
+                        id: a.id,
+                        name: a.name,
+                        discordUsername: a.discordUsername,
+                        commissionRate: a.commissionRate,
+                        notes: a.notes,
+                      }}
+                      trigger={
+                        <Button size="sm" variant="ghost">
+                          Edit
+                        </Button>
+                      }
+                    />
+                  </div>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
     </div>
   )
 }

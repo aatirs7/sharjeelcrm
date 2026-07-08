@@ -9,6 +9,7 @@ import {
   createDeliveryFollowupTasks,
   autoCompleteProofTask,
   autoCompleteBuyerConfirmTask,
+  recomputeOrderRollups,
 } from '../automations'
 
 type OrderStatusValue = (typeof orderStatus.enumValues)[number]
@@ -48,7 +49,10 @@ export async function updateOrderPayment(id: string, input: UpdatePaymentInput):
   }
 
   await db.update(orders).set(patch).where(eq(orders.id, id))
+  if (input.paymentStatus !== undefined) await recomputeOrderRollups(id) // rules 7 & 8
   revalidateOrder(id)
+  revalidatePath('/customers')
+  revalidatePath('/affiliates')
 }
 
 /**

@@ -15,7 +15,11 @@ import {
 } from '../db/schema'
 import { requireRep } from '../auth'
 import { computeOrderMoney } from '../money'
-import { createFollowUpTaskForLead, createDeliveryTaskForOrder } from '../automations'
+import {
+  createFollowUpTaskForLead,
+  createDeliveryTaskForOrder,
+  recomputeOrderRollups,
+} from '../automations'
 
 type LeadStatusValue = (typeof leadStatus.enumValues)[number]
 type LeadSourceValue = (typeof leadSource.enumValues)[number]
@@ -164,7 +168,7 @@ export async function convertLeadToOrder(id: string, input: ConvertLeadInput): P
   await db.update(leads).set({ status: 'won' }).where(eq(leads.id, id))
 
   await createDeliveryTaskForOrder(order.id) // rule 3
-  // TODO(M6): recompute customer (rule 7) and affiliate (rule 8) rollups here.
+  await recomputeOrderRollups(order.id) // rules 7 & 8
 
   revalidatePath('/leads')
   revalidatePath(`/leads/${id}`)

@@ -12,7 +12,7 @@
  */
 import { and, eq } from 'drizzle-orm'
 import { db } from './db'
-import { leads, orders, tasks } from './db/schema'
+import { affiliates, customers, leads, orders, tasks } from './db/schema'
 
 const HOUR = 3_600_000
 
@@ -128,4 +128,54 @@ export async function autoCompleteBuyerConfirmTask(orderId: string): Promise<voi
     .where(
       and(eq(tasks.orderId, orderId), eq(tasks.type, 'buyer_confirmation'), eq(tasks.status, 'open'))
     )
+}
+
+/**
+ * Rule 7 — recompute a customer's rollups from their orders:
+ * totalOrders (all), totalSpentCents (paid only), lastPurchaseAt (latest paid).
+ */
+export async function recomputeCustomerRollups(customerId: string): Promise<void> {
+  const rows = await db.select().from(orders).where(eq(orders.customerId, customerId))
+  const paid = rows.filter((o) => o.paymentStatus === 'paid')
+  const totalSpentCents = paid.reduce((s, o) => s + o.priceCents, 0)
+  const paidDates = paid.map((o) => o.paidAt).filter((d): d is Date => d != null).map((d) => new Date(d).getTime())
+  const lastPurchaseAt = paidDates.length ? new Date(Math.max(...paidDates)) : null
+
+  await db
+    .update(customers)
+    .set({ totalOrders: rows.length, totalSpentCents, lastPurchaseAt })
+    .where(eq(customers.id, customerId))
+}
+
+/**
+ * Rule 8 — recompute an affiliate's rollups from orders they drove:
+ * closedSalesCount + revenueCents (paid orders), commissionOwedCents
+ * (sum of their paid orders' commissionCents minus commissionPaidCents).
+ * referralsCount tracks all attributed orders.
+ */
+export async function recomputeAffiliateRollups(affiliateId: string): Promise<void> {
+  const affiliate = await db.query.affiliates.findFirst({ where: eq(affiliates.id, affiliateId) })
+  if (!affiliate) return
+  const rows = await db.select().from(orders).where(eq(orders.affiliateId, affiliateId))
+  const paid = rows.filter((o) => o.paymentStatus === 'paid')
+  const revenueCents = paid.reduce((s, o) => s + o.priceCents, 0)
+  const commissionTotal = paid.reduce((s, o) => s + o.commissionCents, 0)
+
+  await db
+    .update(affiliates)
+    .set({
+      referralsCount: rows.length,
+      closedSalesCount: paid.length,
+      revenueCents,
+      commissionOwedCents: Math.max(0, commissionTotal - affiliate.commissionPaidCents),
+    })
+    .where(eq(affiliates.id, affiliateId))
+}
+
+/** Convenience — recompute both rollups touched by an order. */
+export async function recomputeOrderRollups(orderId: string): Promise<void> {
+  const order = await db.query.orders.findFirst({ where: eq(orders.id, orderId) })
+  if (!order) return
+  await recomputeCustomerRollups(order.customerId)
+  if (order.affiliateId) await recomputeAffiliateRollups(order.affiliateId)
 }
