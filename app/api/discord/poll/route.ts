@@ -8,6 +8,7 @@ import {
   findBuyer,
   firstBuyerMessage,
   detectReferralCode,
+  classifyTicket,
   postTagButtons,
 } from '@/lib/discord'
 
@@ -66,6 +67,7 @@ async function handle(req: Request): Promise<NextResponse> {
       interest: message,
       referralCode: code,
       source: code ? 'affiliate' : 'discord',
+      ticketType: classifyTicket(message),
     })
     await postTagButtons(ch.id, buyer.username, ticketLink)
     created++

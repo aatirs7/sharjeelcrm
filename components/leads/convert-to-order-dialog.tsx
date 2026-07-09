@@ -73,7 +73,7 @@ export function ConvertToOrderDialog({
         <DialogHeader>
           <DialogTitle>Convert to order</DialogTitle>
           <DialogDescription>
-            Creates a paid order and marks the lead won. Money is computed automatically.
+            Creates a paid order and marks the ticket won. Money is computed automatically.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-3">

@@ -71,8 +71,8 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
         {order.affiliate && <span>Affiliate: {order.affiliate.name}</span>}
         {order.lead && (
           <span>
-            Origin lead:{' '}
-            <Link href={`/leads/${order.leadId}`} className="text-foreground hover:underline">
+            Origin ticket:{' '}
+            <Link href={`/tickets/${order.leadId}`} className="text-foreground hover:underline">
               {order.lead.discordUsername}
             </Link>
           </span>

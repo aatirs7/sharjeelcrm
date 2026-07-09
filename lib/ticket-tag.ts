@@ -2,11 +2,11 @@ import { eq } from 'drizzle-orm'
 import { db } from './db'
 import { leads } from './db/schema'
 
-export type TicketTag = 'purchase' | 'support' | 'warranty'
+export type TicketTag = 'purchase' | 'support' | 'question'
 
 /**
- * Apply a staff ticket tag to the lead for a channel. Purchase keeps it in the
- * pipeline (annotated); support/warranty marks it lost. Idempotent per channel.
+ * Apply a staff ticket tag: sets the lead's ticketType (drives the tabs) and
+ * annotates the notes. Idempotent per channel.
  */
 export async function applyTicketTag(
   discordChannelId: string,
@@ -18,11 +18,9 @@ export async function applyTicketTag(
   if (!lead) return { ok: false }
 
   const note = `[bot] tagged as ${tag}`
-  const notes = lead.notes ? `${lead.notes}\n${note}` : note
-  if (tag === 'purchase') {
-    await db.update(leads).set({ notes }).where(eq(leads.id, lead.id))
-  } else {
-    await db.update(leads).set({ status: 'lost', notes }).where(eq(leads.id, lead.id))
-  }
+  await db
+    .update(leads)
+    .set({ ticketType: tag, notes: lead.notes ? `${lead.notes}\n${note}` : note })
+    .where(eq(leads.id, lead.id))
   return { ok: true, leadId: lead.id }
 }

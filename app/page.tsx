@@ -63,14 +63,14 @@ export default async function DashboardPage({
       <div className="space-y-3">
       <SectionLabel>pipeline &amp; support</SectionLabel>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        <MetricCard label={`New leads (${period})`} value={m.newLeads} />
+        <MetricCard label={`New tickets (${period})`} value={m.newLeads} />
         <MetricCard
           label="Close rate"
           value={m.closeRatePct == null ? '—' : `${m.closeRatePct}%`}
           sub={m.closeRateBasis}
         />
         <MetricCard
-          label="Best lead source"
+          label="Top source"
           value={m.bestLeadSource ? titleCase(m.bestLeadSource) : '—'}
         />
         <MetricCard

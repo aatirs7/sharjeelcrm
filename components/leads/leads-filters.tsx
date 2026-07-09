@@ -31,7 +31,7 @@ export function LeadsFilters({
     const next = new URLSearchParams(params.toString())
     if (value === 'all' || value === '') next.delete(key)
     else next.set(key, value)
-    router.push(`/leads?${next.toString()}`)
+    router.push(`/tickets?${next.toString()}`)
   }
 
   return (

@@ -92,6 +92,9 @@ export const taskType = pgEnum('task_type', [
 
 export const taskStatus = pgEnum('task_status', ['open', 'done', 'snoozed'])
 
+// What a ticket is about — set by the bot tag buttons / classifier.
+export const ticketType = pgEnum('ticket_type', ['purchase', 'support', 'question', 'other'])
+
 export const riskStatus = pgEnum('risk_status', ['good', 'watch', 'high_risk', 'blocked'])
 
 // ---------------------------------------------------------------------------
@@ -171,6 +174,7 @@ export const leads = pgTable('leads', {
   ticketLink: text('ticket_link'),
   discordChannelId: text('discord_channel_id'), // filled by bot in phase 2
   source: leadSource('source').notNull().default('discord'),
+  ticketType: ticketType('ticket_type'), // purchase | support | question — for tabs
   referralCode: text('referral_code'), // code the buyer cited; maps to an affiliate
   interest: text('interest'),
   budgetCents: integer('budget_cents'),

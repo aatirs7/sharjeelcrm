@@ -87,7 +87,7 @@ export default async function TasksPage({
                         {t.order.package}
                       </Link>
                     ) : t.lead ? (
-                      <Link href={`/leads/${t.leadId}`} className="hover:underline">
+                      <Link href={`/tickets/${t.leadId}`} className="hover:underline">
                         {t.lead.discordUsername}
                       </Link>
                     ) : (

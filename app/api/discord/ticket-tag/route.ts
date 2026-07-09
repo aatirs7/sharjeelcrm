@@ -18,7 +18,7 @@ export async function POST(req: Request): Promise<NextResponse> {
   } catch {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
-  if (!body.discordChannelId || !['purchase', 'support', 'warranty'].includes(body.tag ?? '')) {
+  if (!body.discordChannelId || !['purchase', 'support', 'question'].includes(body.tag ?? '')) {
     return NextResponse.json({ error: 'discordChannelId and valid tag required' }, { status: 400 })
   }
   const result = await applyTicketTag(body.discordChannelId, body.tag as TicketTag)

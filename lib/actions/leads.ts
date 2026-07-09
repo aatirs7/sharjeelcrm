@@ -55,7 +55,7 @@ export async function createLead(input: CreateLeadInput): Promise<string> {
       assignedRepId: input.assignedRepId || rep.id,
     })
     .returning()
-  revalidatePath('/leads')
+  revalidatePath('/tickets')
   return lead.id
 }
 
@@ -87,8 +87,8 @@ export async function updateLeadFields(id: string, input: UpdateLeadInput): Prom
     patch.nextFollowUpAt = input.nextFollowUpAt ? new Date(input.nextFollowUpAt) : null
 
   await db.update(leads).set(patch).where(eq(leads.id, id))
-  revalidatePath('/leads')
-  revalidatePath(`/leads/${id}`)
+  revalidatePath('/tickets')
+  revalidatePath(`/tickets/${id}`)
 }
 
 /**
@@ -105,8 +105,8 @@ export async function setLeadStatus(
   if (status === 'payment_pending') {
     await createFollowUpTaskForLead(id)
   }
-  revalidatePath('/leads')
-  revalidatePath(`/leads/${id}`)
+  revalidatePath('/tickets')
+  revalidatePath(`/tickets/${id}`)
 }
 
 export interface ConvertLeadInput {
@@ -182,8 +182,8 @@ export async function convertLeadToOrder(id: string, input: ConvertLeadInput): P
   await createDeliveryTaskForOrder(order.id) // rule 3
   await recomputeOrderRollups(order.id) // rules 7 & 8
 
-  revalidatePath('/leads')
-  revalidatePath(`/leads/${id}`)
+  revalidatePath('/tickets')
+  revalidatePath(`/tickets/${id}`)
   revalidatePath('/orders')
   redirect(`/orders/${order.id}`)
 }

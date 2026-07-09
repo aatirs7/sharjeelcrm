@@ -5,6 +5,7 @@ import {
   ORDER_STATUS_CLASSES,
   RISK_STATUS_CLASSES,
   WARRANTY_STATE_CLASSES,
+  TICKET_TYPE_CLASSES,
 } from '@/lib/labels'
 
 function Pill({ value, classes }: { value: string; classes: string }) {
@@ -34,4 +35,8 @@ export function RiskStatusBadge({ status }: { status: string }) {
 
 export function WarrantyBadge({ state }: { state: string }) {
   return <Pill value={state} classes={WARRANTY_STATE_CLASSES[state] ?? 'bg-muted text-foreground'} />
+}
+
+export function TicketTypeBadge({ type }: { type: string }) {
+  return <Pill value={type} classes={TICKET_TYPE_CLASSES[type] ?? 'bg-muted text-muted-foreground'} />
 }

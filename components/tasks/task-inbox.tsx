@@ -42,7 +42,7 @@ export async function TaskInbox({ repId }: { repId: string }) {
           <ul className="divide-y">
             {rows.map((t) => {
               const { text: dueText, overdue } = formatDue(t.dueAt)
-              const href = t.orderId ? `/orders/${t.orderId}` : t.leadId ? `/leads/${t.leadId}` : null
+              const href = t.orderId ? `/orders/${t.orderId}` : t.leadId ? `/tickets/${t.leadId}` : null
               return (
                 <li key={t.id} className="flex items-center justify-between gap-3 py-2">
                   <div className="min-w-0">

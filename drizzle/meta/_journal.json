@@ -15,6 +15,13 @@
       "when": 1783628572659,
       "tag": "0001_dapper_mongu",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1783632966191,
+      "tag": "0002_light_groot",
+      "breakpoints": true
     }
   ]
 }

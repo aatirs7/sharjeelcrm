@@ -52,7 +52,7 @@ export function LeadQuickAdd({ reps }: { reps: Rep[] }) {
           ticketLink: ticketLink || null,
           assignedRepId: assignedRepId === 'me' ? null : assignedRepId,
         })
-        toast.success('Lead created')
+        toast.success('Ticket created')
         setOpen(false)
         setDiscordUsername('')
         setInterest('')
@@ -60,17 +60,17 @@ export function LeadQuickAdd({ reps }: { reps: Rep[] }) {
         setTicketLink('')
         router.refresh()
       } catch {
-        toast.error('Could not create lead')
+        toast.error('Could not create ticket')
       }
     })
   }
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger render={<Button>Add lead</Button>} />
+      <DialogTrigger render={<Button>Add ticket</Button>} />
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>New lead</DialogTitle>
+          <DialogTitle>New ticket</DialogTitle>
         </DialogHeader>
         <div className="space-y-3">
           <div className="space-y-1.5">
@@ -149,7 +149,7 @@ export function LeadQuickAdd({ reps }: { reps: Rep[] }) {
             Cancel
           </Button>
           <Button onClick={submit} disabled={pending}>
-            {pending ? 'Creating…' : 'Create lead'}
+            {pending ? 'Creating…' : 'Create ticket'}
           </Button>
         </DialogFooter>
       </DialogContent>

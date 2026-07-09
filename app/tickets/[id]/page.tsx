@@ -41,10 +41,10 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
     <div className="space-y-6">
       <div className="flex flex-col items-center gap-3 border-b border-border/60 pb-6 text-center">
         <Link
-          href="/leads"
+          href="/tickets"
           className="font-mono text-[11px] uppercase tracking-[0.18em] text-muted-foreground hover:text-foreground"
         >
-          ← leads
+          ← tickets
         </Link>
         <div className="flex items-center gap-3">
           <h1 className="font-heading text-3xl font-semibold tracking-tight">

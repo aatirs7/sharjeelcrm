@@ -75,6 +75,20 @@ export async function firstBuyerMessage(channelId: string, buyerId: string): Pro
   }
 }
 
+/** Classify a ticket from the buyer's first message: purchase | support | question. */
+export function classifyTicket(text: string | null): 'purchase' | 'support' | 'question' {
+  if (!text) return 'question'
+  const SUPPORT =
+    /\b(warranty|banned|suspended|refund|replace|replacement|not working|can'?t (log|access)|locked out|help with my (account|order)|already (bought|purchased|paid)|payout|got flagged|my account (is|got|was))\b/i
+  const PURCHASE =
+    /\b(buy|buying|purchase|looking for|interested|how much|price|cost|account|acc|\d+\s*k\b|followers?|tts|tiktok shop|order|delivery|usa|uk|preview|available)\b/i
+  const REFERRAL = /\b(sent me|referred|recommend(ed)?|promo|discount|coupon|code)\b/i
+  const PAYMENT = /(\$\s?\d|btc|crypto|paypal|zelle|cashapp|payment)/i
+  if (SUPPORT.test(text) && !PURCHASE.test(text)) return 'support'
+  if (PURCHASE.test(text) || REFERRAL.test(text) || PAYMENT.test(text)) return 'purchase'
+  return 'question'
+}
+
 /** Conservative referral-code detection (AA10 / RAY10 / "code X<digit>"). */
 export function detectReferralCode(text: string | null): string | null {
   if (!text) return null
@@ -112,7 +126,7 @@ export async function postTagButtons(
         components: [
           { type: 2, style: 3, label: 'Purchase', emoji: { name: '🛒' }, custom_id: `tag:purchase:${ticketChannelId}` },
           { type: 2, style: 2, label: 'Support', emoji: { name: '🛟' }, custom_id: `tag:support:${ticketChannelId}` },
-          { type: 2, style: 2, label: 'Warranty', emoji: { name: '🛡️' }, custom_id: `tag:warranty:${ticketChannelId}` },
+          { type: 2, style: 2, label: 'Question', emoji: { name: '❓' }, custom_id: `tag:question:${ticketChannelId}` },
         ],
       },
     ],

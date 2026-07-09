@@ -37,7 +37,7 @@ function verify(publicKeyHex: string, signatureHex: string, timestamp: string, b
 const TAG_LABEL: Record<TicketTag, string> = {
   purchase: '🛒 Purchase',
   support: '🛟 Support',
-  warranty: '🛡️ Warranty',
+  question: '❓ Question',
 }
 
 export async function POST(req: Request): Promise<NextResponse> {
