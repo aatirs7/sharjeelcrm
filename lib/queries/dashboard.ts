@@ -1,6 +1,6 @@
-import { isNull, sql } from 'drizzle-orm'
+import { and, eq, isNull, lt, sql } from 'drizzle-orm'
 import { db } from '../db'
-import { orders, leads, issues } from '../db/schema'
+import { orders, leads, issues, tasks } from '../db/schema'
 import { warrantyState } from '../warranty'
 
 export type Period = 'week' | 'month'
@@ -25,6 +25,7 @@ export interface DashboardMetrics {
   activeWarranties: number
   expiringWarranties: number
   openIssues: number
+  overdueTasks: number
 }
 
 function rangeFor(period: Period): { start: Date; label: string } {
@@ -47,10 +48,14 @@ export async function getDashboardMetrics(period: Period): Promise<DashboardMetr
   const { start, label } = rangeFor(period)
   const now = new Date()
 
-  const [allOrders, allLeads, openIssuesRow] = await Promise.all([
+  const [allOrders, allLeads, openIssuesRow, overdueTasksRow] = await Promise.all([
     db.select().from(orders),
     db.select().from(leads),
     db.select({ n: sql<number>`count(*)::int` }).from(issues).where(isNull(issues.resolvedAt)),
+    db
+      .select({ n: sql<number>`count(*)::int` })
+      .from(tasks)
+      .where(and(eq(tasks.status, 'open'), lt(tasks.dueAt, now))),
   ])
 
   // Range-based order metrics (bucketed by paidAt for revenue-linked figures).
@@ -121,5 +126,6 @@ export async function getDashboardMetrics(period: Period): Promise<DashboardMetr
     activeWarranties,
     expiringWarranties,
     openIssues: openIssuesRow[0]?.n ?? 0,
+    overdueTasks: overdueTasksRow[0]?.n ?? 0,
   }
 }

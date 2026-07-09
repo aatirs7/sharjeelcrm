@@ -32,7 +32,7 @@ export default async function DashboardPage({
       {/* Revenue / sales */}
       <div className="space-y-3">
       <SectionLabel>revenue &amp; sales</SectionLabel>
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className={`grid gap-3 sm:grid-cols-2 ${isAdmin ? 'lg:grid-cols-3' : 'lg:grid-cols-4'}`}>
         <MetricCard label={`Revenue (${period})`} value={formatCents(m.revenueCents)} sub={`${m.paidOrders} paid orders`} />
         <MetricCard label="Avg order value" value={formatCents(m.avgOrderValueCents)} />
         <MetricCard
@@ -62,7 +62,7 @@ export default async function DashboardPage({
       {/* Pipeline / support */}
       <div className="space-y-3">
       <SectionLabel>pipeline &amp; support</SectionLabel>
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <MetricCard label={`New leads (${period})`} value={m.newLeads} />
         <MetricCard
           label="Close rate"
@@ -79,6 +79,11 @@ export default async function DashboardPage({
           sub={m.expiringWarranties ? `${m.expiringWarranties} expiring ≤7d` : 'none expiring'}
         />
         <MetricCard label="Open issues" value={m.openIssues} />
+        <MetricCard
+          label="Overdue tasks"
+          value={m.overdueTasks}
+          sub={m.overdueTasks ? 'needs attention' : 'all clear'}
+        />
       </div>
       </div>
 
