@@ -34,6 +34,7 @@ export function LeadQuickAdd({ reps }: { reps: Rep[] }) {
   const [source, setSource] = useState<string>('discord')
   const [interest, setInterest] = useState('')
   const [budget, setBudget] = useState('')
+  const [email, setEmail] = useState('')
   const [ticketLink, setTicketLink] = useState('')
   const [assignedRepId, setAssignedRepId] = useState<string>('me')
 
@@ -50,6 +51,7 @@ export function LeadQuickAdd({ reps }: { reps: Rep[] }) {
           interest: interest || null,
           budgetDollars: budget || null,
           ticketLink: ticketLink || null,
+          email: email || null,
           assignedRepId: assignedRepId === 'me' ? null : assignedRepId,
         })
         toast.success('Ticket created')
@@ -57,6 +59,7 @@ export function LeadQuickAdd({ reps }: { reps: Rep[] }) {
         setDiscordUsername('')
         setInterest('')
         setBudget('')
+        setEmail('')
         setTicketLink('')
         router.refresh()
       } catch {
@@ -116,6 +119,16 @@ export function LeadQuickAdd({ reps }: { reps: Rep[] }) {
               value={interest}
               onChange={(e) => setInterest(e.target.value)}
               placeholder="Starter Shop"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="email">Email (for Stripe match)</Label>
+            <Input
+              id="email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="buyer@email.com"
             />
           </div>
           <div className="space-y-1.5">

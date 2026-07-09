@@ -59,6 +59,7 @@ async function handle(req: Request): Promise<NextResponse> {
     const ticketLink = `https://discord.com/channels/${guildId}/${ch.id}`
     const message = await firstBuyerMessage(ch.id, buyer.id)
     const code = detectReferralCode(message)
+    const email = message?.match(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/)?.[0] ?? null
 
     await ingestTicketLead({
       discordUsername: buyer.username,
@@ -68,6 +69,7 @@ async function handle(req: Request): Promise<NextResponse> {
       referralCode: code,
       source: code ? 'affiliate' : 'discord',
       ticketType: classifyTicket(message),
+      email,
     })
     await postTagButtons(ch.id, buyer.username, ticketLink)
     created++

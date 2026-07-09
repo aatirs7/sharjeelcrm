@@ -10,6 +10,7 @@ export interface TicketLeadInput {
   interest?: string | null
   referralCode?: string | null
   ticketType?: 'purchase' | 'support' | 'question' | 'other' | null
+  email?: string | null
 }
 
 /**
@@ -43,6 +44,7 @@ export async function ingestTicketLead(
     referralCode,
     interest: input.interest?.trim() || null,
     ticketType: input.ticketType ?? null,
+    email: input.email?.trim().toLowerCase() || null,
   }
 
   if (values.discordChannelId) {
@@ -59,6 +61,7 @@ export async function ingestTicketLead(
           interest: values.interest ?? existing.interest,
           source: values.source,
           ticketType: existing.ticketType ?? values.ticketType, // don't clobber a staff tag
+          email: existing.email ?? values.email, // don't clobber a set email
         })
         .where(eq(leads.id, existing.id))
       return { leadId: existing.id, created: false }

@@ -1,3 +1,7 @@
+import Link from 'next/link'
+import { isNotNull } from 'drizzle-orm'
+import { db } from '@/lib/db'
+import { leads } from '@/lib/db/schema'
 import { getFinanceStats } from '@/lib/queries/finance'
 import { getStripeStats } from '@/lib/stripe'
 import { formatCents } from '@/lib/money'
@@ -25,25 +29,53 @@ export default async function RevenuePage() {
   const [f, stripe] = await Promise.all([getFinanceStats(), getStripeStats()])
   const maxMethod = Math.max(1, ...f.byMethod.map((m) => m.cents))
 
+  // When Stripe is connected, the money figures track real Stripe money;
+  // the 85/15 split is derived from it. Otherwise fall back to CRM orders.
+  const live = stripe.configured && !stripe.error
+  const revenueCents = live ? stripe.grossCents ?? 0 : f.revenueCents
+  const monthCents = live ? stripe.monthCents ?? 0 : f.revenueThisMonthCents
+  const paidCount = live ? stripe.paidCount ?? 0 : f.paidCount
+  const supplierPayoutCents = Math.round(revenueCents * 0.85)
+  const grossProfitCents = revenueCents - supplierPayoutCents
+  const commissionCents = f.commissionCents
+  const netProfitCents = grossProfitCents - commissionCents
+  const refundsCount = live ? stripe.refundedCount ?? 0 : f.refundsCount
+  const refundsCents = live ? stripe.refundedCents ?? 0 : f.refundsCents
+
+  // Match Stripe charges to tickets by email.
+  const emailLeads = live
+    ? await db
+        .select({ id: leads.id, discordUsername: leads.discordUsername, email: leads.email })
+        .from(leads)
+        .where(isNotNull(leads.email))
+    : []
+  const leadByEmail = new Map(
+    emailLeads.filter((l) => l.email).map((l) => [l.email!.toLowerCase(), l])
+  )
+
   return (
     <div className="space-y-8">
-      <PageHeader marker="revenue" title="Revenue" meta={`${f.paidCount} paid orders · live`} />
+      <PageHeader
+        marker="revenue"
+        title="Revenue"
+        meta={`${paidCount} payments · ${live ? `stripe ${stripe.mode}` : 'crm'}`}
+      />
 
       {/* Money */}
       <div className="space-y-3">
-        <SectionLabel>money</SectionLabel>
+        <SectionLabel>money{live ? ' · live from stripe' : ''}</SectionLabel>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <MetricCard label="Revenue (all-time)" value={formatCents(f.revenueCents)} sub={`${f.paidCount} orders`} />
-          <MetricCard label="Revenue (this month)" value={formatCents(f.revenueThisMonthCents)} />
-          <MetricCard label="Net profit" value={formatCents(f.netProfitCents)} sub="after commission" accent="admin" />
-          <MetricCard label="Gross profit (15%)" value={formatCents(f.grossProfitCents)} accent="admin" />
-          <MetricCard label="Supplier payouts (85%)" value={formatCents(f.supplierPayoutCents)} />
-          <MetricCard label="Affiliate commissions" value={formatCents(f.commissionCents)} />
+          <MetricCard label="Revenue (all-time)" value={formatCents(revenueCents)} sub={`${paidCount} payments`} />
+          <MetricCard label="Revenue (this month)" value={formatCents(monthCents)} />
+          <MetricCard label="Net profit" value={formatCents(netProfitCents)} sub="after commission" accent="admin" />
+          <MetricCard label="Gross profit (15%)" value={formatCents(grossProfitCents)} accent="admin" />
+          <MetricCard label="Supplier payouts (85%)" value={formatCents(supplierPayoutCents)} />
+          <MetricCard label="Affiliate commissions" value={formatCents(commissionCents)} />
           <MetricCard label="Commission owed" value={formatCents(f.commissionOwedCents)} sub={`${formatCents(f.commissionPaidCents)} paid`} />
           <MetricCard
             label="Refunds / chargebacks"
-            value={f.refundsCount}
-            sub={f.refundsCount ? formatCents(f.refundsCents) : 'none'}
+            value={refundsCount}
+            sub={refundsCount ? formatCents(refundsCents) : 'none'}
           />
         </div>
       </div>
@@ -160,18 +192,34 @@ export default async function RevenuePage() {
                         </TableCell>
                       </TableRow>
                     )}
-                    {(stripe.charges ?? []).map((c) => (
-                      <TableRow key={c.id}>
-                        <TableCell className="text-sm">
-                          {c.description ?? c.id.slice(0, 14)}
-                          <div className="text-xs text-muted-foreground">{fmtDate(c.created)}</div>
-                        </TableCell>
-                        <TableCell className={cn('text-sm', c.status === 'succeeded' ? 'text-emerald-500' : 'text-muted-foreground')}>
-                          {c.status}
-                        </TableCell>
-                        <TableCell className="text-right tabular-nums">{formatCents(c.amountCents)}</TableCell>
-                      </TableRow>
-                    ))}
+                    {(stripe.charges ?? []).map((c) => {
+                      const match = c.email ? leadByEmail.get(c.email.toLowerCase()) : null
+                      return (
+                        <TableRow key={c.id}>
+                          <TableCell className="text-sm">
+                            {c.name ?? c.email ?? c.id.slice(0, 14)}
+                            <div className="text-xs text-muted-foreground">
+                              {c.email ? `${c.email} · ` : ''}
+                              {fmtDate(c.created)}
+                            </div>
+                            {match ? (
+                              <Link
+                                href={`/tickets/${match.id}`}
+                                className="text-xs font-mono text-primary hover:underline"
+                              >
+                                → @{match.discordUsername}
+                              </Link>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">unlinked</span>
+                            )}
+                          </TableCell>
+                          <TableCell className={cn('text-sm', c.status === 'succeeded' ? 'text-emerald-500' : 'text-muted-foreground')}>
+                            {c.status}
+                          </TableCell>
+                          <TableCell className="text-right tabular-nums">{formatCents(c.amountCents)}</TableCell>
+                        </TableRow>
+                      )
+                    })}
                   </TableBody>
                 </Table>
               </div>

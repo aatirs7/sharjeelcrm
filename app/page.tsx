@@ -1,5 +1,6 @@
 import { getCurrentRep } from '@/lib/auth'
 import { getDashboardMetrics, type Period } from '@/lib/queries/dashboard'
+import { getStripeStats } from '@/lib/stripe'
 import { formatCents } from '@/lib/money'
 import { titleCase } from '@/lib/labels'
 import { Card, CardContent } from '@/components/ui/card'
@@ -18,7 +19,17 @@ export default async function DashboardPage({
 
   const rep = await getCurrentRep()
   const isAdmin = rep?.role === 'admin'
-  const m = await getDashboardMetrics(period)
+  const [m, stripe] = await Promise.all([getDashboardMetrics(period), getStripeStats()])
+
+  // Stripe is the source of truth for money.
+  const live = stripe.configured && !stripe.error
+  const revenueCents = live ? (period === 'week' ? stripe.weekCents : stripe.monthCents) ?? 0 : m.revenueCents
+  const payCount = live ? (period === 'week' ? stripe.weekCount : stripe.monthCount) ?? 0 : m.paidOrders
+  const aovCents = payCount ? Math.round(revenueCents / payCount) : 0
+  const payoutCents = live ? Math.round(revenueCents * 0.85) : m.supplierPayoutCents
+  const profitCents = live ? revenueCents - Math.round(revenueCents * 0.85) : m.netProfitCents
+  const refundsCount = live ? stripe.refundedCount ?? 0 : m.refundsCount
+  const refundsCents = live ? stripe.refundedCents ?? 0 : m.refundsCents
 
   return (
     <div className="space-y-8">
@@ -33,25 +44,24 @@ export default async function DashboardPage({
       <div className="space-y-3">
       <SectionLabel>revenue &amp; sales</SectionLabel>
       <div className={`grid gap-3 sm:grid-cols-2 ${isAdmin ? 'lg:grid-cols-3' : 'lg:grid-cols-4'}`}>
-        <MetricCard label={`Revenue (${period})`} value={formatCents(m.revenueCents)} sub={`${m.paidOrders} paid orders`} />
-        <MetricCard label="Avg order value" value={formatCents(m.avgOrderValueCents)} />
+        <MetricCard label={`Revenue (${period})`} value={formatCents(revenueCents)} sub={`${payCount} payments`} />
+        <MetricCard label="Avg order value" value={formatCents(aovCents)} />
         <MetricCard
           label="Refunds / chargebacks"
-          value={m.refundsCount}
-          sub={m.refundsCount ? formatCents(m.refundsCents) : 'none'}
+          value={refundsCount}
+          sub={refundsCount ? formatCents(refundsCents) : 'none'}
         />
         <MetricCard label="Orders awaiting delivery" value={m.awaitingDelivery} />
         {isAdmin && (
           <>
             <MetricCard
               label="Supplier payout (85%)"
-              value={formatCents(m.supplierPayoutCents)}
+              value={formatCents(payoutCents)}
               accent="admin"
             />
             <MetricCard
               label="Profit (15%)"
-              value={formatCents(m.netProfitCents)}
-              sub="net of commission"
+              value={formatCents(profitCents)}
               accent="admin"
             />
           </>

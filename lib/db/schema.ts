@@ -175,6 +175,7 @@ export const leads = pgTable('leads', {
   discordChannelId: text('discord_channel_id'), // filled by bot in phase 2
   source: leadSource('source').notNull().default('discord'),
   ticketType: ticketType('ticket_type'), // purchase | support | question — for tabs
+  email: text('email'), // buyer email — matches Stripe charge billing email
   referralCode: text('referral_code'), // code the buyer cited; maps to an affiliate
   interest: text('interest'),
   budgetCents: integer('budget_cents'),

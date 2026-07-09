@@ -38,6 +38,7 @@ export interface CreateLeadInput {
   budgetDollars?: number | string | null
   ticketLink?: string | null
   referralCode?: string | null
+  email?: string | null
   assignedRepId?: string | null
 }
 
@@ -52,6 +53,7 @@ export async function createLead(input: CreateLeadInput): Promise<string> {
       budgetCents: dollarsToCents(input.budgetDollars),
       ticketLink: input.ticketLink?.trim() || null,
       referralCode: input.referralCode?.trim() || null,
+      email: input.email?.trim().toLowerCase() || null,
       assignedRepId: input.assignedRepId || rep.id,
     })
     .returning()
@@ -65,6 +67,7 @@ export interface UpdateLeadInput {
   source?: LeadSourceValue
   ticketLink?: string | null
   referralCode?: string | null
+  email?: string | null
   assignedRepId?: string | null
   notes?: string | null
   lastContactAt?: string | null
@@ -79,6 +82,7 @@ export async function updateLeadFields(id: string, input: UpdateLeadInput): Prom
   if (input.source !== undefined) patch.source = input.source
   if (input.ticketLink !== undefined) patch.ticketLink = input.ticketLink?.trim() || null
   if (input.referralCode !== undefined) patch.referralCode = input.referralCode?.trim() || null
+  if (input.email !== undefined) patch.email = input.email?.trim().toLowerCase() || null
   if (input.assignedRepId !== undefined) patch.assignedRepId = input.assignedRepId || null
   if (input.notes !== undefined) patch.notes = input.notes ?? null
   if (input.lastContactAt !== undefined)

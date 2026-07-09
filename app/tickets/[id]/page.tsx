@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
 import { LeadStatusChanger } from '@/components/leads/lead-status-changer'
 import { LeadNotes } from '@/components/leads/lead-notes'
+import { LeadEmail } from '@/components/leads/lead-email'
 import { ConvertToOrderDialog } from '@/components/leads/convert-to-order-dialog'
 
 function Field({ label, value }: { label: string; value: React.ReactNode }) {
@@ -103,6 +104,11 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
               value={lead.assignedRep?.displayName ?? lead.assignedRep?.email ?? '—'}
             />
             <Field label="Created" value={new Date(lead.createdAt).toLocaleDateString()} />
+            <Separator className="my-3" />
+            <div className="space-y-2">
+              <div className="text-sm text-muted-foreground">Email (for Stripe match)</div>
+              <LeadEmail leadId={lead.id} email={lead.email ?? ''} />
+            </div>
             <Separator className="my-3" />
             <div className="space-y-2">
               <div className="text-sm text-muted-foreground">Status</div>
