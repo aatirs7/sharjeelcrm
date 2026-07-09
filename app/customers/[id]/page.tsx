@@ -45,12 +45,19 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-3">
-        <Link href="/customers" className="text-sm text-muted-foreground hover:underline">
-          ← Customers
+      <div className="flex flex-col items-center gap-3 border-b border-border/60 pb-6 text-center">
+        <Link
+          href="/customers"
+          className="font-mono text-[11px] uppercase tracking-[0.18em] text-muted-foreground hover:text-foreground"
+        >
+          ← customers
         </Link>
-        <h1 className="text-2xl font-semibold tracking-tight">{customer.discordUsername}</h1>
-        <RiskStatusBadge status={customer.riskStatus} />
+        <div className="flex items-center gap-3">
+          <h1 className="font-heading text-3xl font-semibold tracking-tight">
+            {customer.discordUsername}
+          </h1>
+          <RiskStatusBadge status={customer.riskStatus} />
+        </div>
       </div>
 
       <div className="grid gap-6 md:grid-cols-2">

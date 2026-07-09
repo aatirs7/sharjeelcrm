@@ -39,12 +39,17 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between gap-4">
+      <div className="flex flex-col items-center gap-3 border-b border-border/60 pb-6 text-center">
+        <Link
+          href="/leads"
+          className="font-mono text-[11px] uppercase tracking-[0.18em] text-muted-foreground hover:text-foreground"
+        >
+          ← leads
+        </Link>
         <div className="flex items-center gap-3">
-          <Link href="/leads" className="text-sm text-muted-foreground hover:underline">
-            ← Leads
-          </Link>
-          <h1 className="text-2xl font-semibold tracking-tight">{lead.discordUsername}</h1>
+          <h1 className="font-heading text-3xl font-semibold tracking-tight">
+            {lead.discordUsername}
+          </h1>
           <LeadStatusBadge status={lead.status} />
         </div>
         {!isWon && (

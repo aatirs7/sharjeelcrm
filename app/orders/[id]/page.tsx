@@ -48,15 +48,20 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-3">
-        <Link href="/orders" className="text-sm text-muted-foreground hover:underline">
-          ← Orders
+      <div className="flex flex-col items-center gap-3 border-b border-border/60 pb-6 text-center">
+        <Link
+          href="/orders"
+          className="font-mono text-[11px] uppercase tracking-[0.18em] text-muted-foreground hover:text-foreground"
+        >
+          ← orders
         </Link>
-        <h1 className="text-2xl font-semibold tracking-tight">{order.package}</h1>
-        <OrderStatusBadge status={order.status} />
+        <div className="flex items-center gap-3">
+          <h1 className="font-heading text-3xl font-semibold tracking-tight">{order.package}</h1>
+          <OrderStatusBadge status={order.status} />
+        </div>
       </div>
 
-      <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
+      <div className="flex flex-wrap justify-center gap-4 text-sm text-muted-foreground">
         <span>
           Customer:{' '}
           <Link href={`/customers/${order.customerId}`} className="text-foreground hover:underline">
