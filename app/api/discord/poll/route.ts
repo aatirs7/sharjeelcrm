@@ -67,7 +67,7 @@ async function handle(req: Request): Promise<NextResponse> {
       referralCode: code,
       source: code ? 'affiliate' : 'discord',
     })
-    await postTagButtons(ch.id, buyer.username)
+    await postTagButtons(ch.id, buyer.username, ticketLink)
     created++
   }
 

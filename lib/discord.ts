@@ -85,13 +85,24 @@ export function detectReferralCode(text: string | null): string | null {
   return null
 }
 
-/** Post the staff tag panel (Purchase / Support / Warranty) into a ticket. */
-export async function postTagButtons(channelId: string, buyerUsername: string): Promise<void> {
-  await dpost(`/channels/${channelId}/messages`, {
+/**
+ * Post the staff tag panel to the STAFF channel (never the ticket itself, so
+ * buyers don't see internal CRM chatter). The ticket channel id is encoded in
+ * the button custom_id so the interaction can tag the right lead.
+ * No-op if STAFF_CHANNEL_ID is not configured.
+ */
+export async function postTagButtons(
+  ticketChannelId: string,
+  buyerUsername: string,
+  ticketLink: string
+): Promise<void> {
+  const staffChannel = process.env.STAFF_CHANNEL_ID
+  if (!staffChannel) return
+  await dpost(`/channels/${staffChannel}/messages`, {
     embeds: [
       {
-        title: 'The Desk — classify this ticket',
-        description: `Lead created for **${buyerUsername}**. Staff: tag this ticket so the CRM knows what it is.`,
+        title: 'New ticket → lead',
+        description: `**${buyerUsername}** opened a ticket — [open it](${ticketLink})\nClassify so the CRM knows what it is.`,
         color: 0x3b82f6,
       },
     ],
@@ -99,9 +110,9 @@ export async function postTagButtons(channelId: string, buyerUsername: string): 
       {
         type: 1,
         components: [
-          { type: 2, style: 3, label: 'Purchase', emoji: { name: '🛒' }, custom_id: 'tag:purchase' },
-          { type: 2, style: 2, label: 'Support', emoji: { name: '🛟' }, custom_id: 'tag:support' },
-          { type: 2, style: 2, label: 'Warranty', emoji: { name: '🛡️' }, custom_id: 'tag:warranty' },
+          { type: 2, style: 3, label: 'Purchase', emoji: { name: '🛒' }, custom_id: `tag:purchase:${ticketChannelId}` },
+          { type: 2, style: 2, label: 'Support', emoji: { name: '🛟' }, custom_id: `tag:support:${ticketChannelId}` },
+          { type: 2, style: 2, label: 'Warranty', emoji: { name: '🛡️' }, custom_id: `tag:warranty:${ticketChannelId}` },
         ],
       },
     ],

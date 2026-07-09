@@ -61,7 +61,10 @@ export async function POST(req: Request): Promise<NextResponse> {
     if (!customId.startsWith('tag:')) {
       return NextResponse.json({ type: PONG })
     }
-    const tag = customId.split(':')[1] as TicketTag
+    // custom_id is "tag:<tag>:<ticketChannelId>" (panel lives in a staff channel,
+    // so the ticket id is carried explicitly rather than inferred).
+    const [, tagPart, ticketId] = customId.split(':')
+    const tag = tagPart as TicketTag
 
     // Staff only — needs Manage Channels.
     const perms = BigInt(interaction.member?.permissions ?? '0')
@@ -72,7 +75,7 @@ export async function POST(req: Request): Promise<NextResponse> {
       })
     }
 
-    const channelId: string = interaction.channel_id ?? interaction.channel?.id
+    const channelId: string = ticketId || interaction.channel_id || interaction.channel?.id
     const who = interaction.member?.user?.username ?? 'staff'
     const result = await applyTicketTag(channelId, tag)
 
