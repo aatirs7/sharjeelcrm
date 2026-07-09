@@ -33,19 +33,22 @@ export async function getStripeStats(): Promise<StripeStats> {
   const mode = k.includes('_live_') ? 'live' : 'test'
   try {
     const monthAgo = Math.floor(Date.now() / 1000) - 30 * 86400
-    const [balance, charges, payouts, txns] = await Promise.all([
+    const [balance, charges, payouts] = await Promise.all([
       sget<{ available: { amount: number; currency: string }[]; pending: { amount: number }[] }>(k, '/balance'),
-      sget<{ data: { id: string; amount: number; status: string; created: number; description: string | null }[] }>(k, '/charges?limit=8'),
+      sget<{ data: { id: string; amount: number; status: string; paid: boolean; created: number; description: string | null }[] }>(k, `/charges?limit=100&created[gte]=${monthAgo}`),
       sget<{ data: { id: string; amount: number; status: string; arrival_date: number }[] }>(k, '/payouts?limit=5'),
-      sget<{ data: { amount: number; type: string }[] }>(k, `/balance_transactions?limit=100&created[gte]=${monthAgo}&type=charge`),
     ])
+    // Gross volume = succeeded charges in the last 30d (settled or pending).
+    const volume30dCents = charges.data
+      .filter((c) => c.status === 'succeeded' && c.paid)
+      .reduce((s, c) => s + c.amount, 0)
     return {
       configured: true,
       mode,
       currency: balance.available[0]?.currency?.toUpperCase() ?? 'USD',
       availableCents: balance.available.reduce((s, b) => s + b.amount, 0),
       pendingCents: balance.pending.reduce((s, b) => s + b.amount, 0),
-      charges: charges.data.map((c) => ({
+      charges: charges.data.slice(0, 8).map((c) => ({
         id: c.id,
         amountCents: c.amount,
         status: c.status,
@@ -58,7 +61,7 @@ export async function getStripeStats(): Promise<StripeStats> {
         status: p.status,
         arrival: p.arrival_date,
       })),
-      volume30dCents: txns.data.reduce((s, t) => s + t.amount, 0),
+      volume30dCents,
     }
   } catch (e) {
     return { configured: true, mode, error: e instanceof Error ? e.message : 'stripe error' }
