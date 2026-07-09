@@ -14,14 +14,11 @@ export function MetricCard({
   return (
     <div
       className={cn(
-        "group relative overflow-hidden rounded-xl border bg-card p-4 ring-1 ring-foreground/[0.04] transition-colors hover:border-foreground/15",
+        "group relative flex flex-col items-center overflow-hidden rounded-xl border bg-card p-4 text-center ring-1 ring-foreground/[0.04] transition-colors hover:border-foreground/15",
         accent === "admin" && "border-primary/25"
       )}
     >
-      {accent === "admin" && (
-        <span className="absolute inset-y-0 left-0 w-px bg-primary/60" />
-      )}
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex items-center justify-center gap-2">
         <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-muted-foreground">
           {label}
         </span>

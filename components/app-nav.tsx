@@ -1,7 +1,9 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { Menu, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ThemeToggle } from "@/components/theme-toggle";
 
@@ -15,8 +17,17 @@ const NAV = [
   { href: "/affiliates", label: "affiliates" },
 ];
 
+function isActive(pathname: string, href: string) {
+  return href === "/" ? pathname === "/" : pathname.startsWith(href);
+}
+
 export function AppNav() {
   const pathname = usePathname();
+  const [open, setOpen] = useState(false);
+
+  // Close the mobile menu on navigation.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => setOpen(false), [pathname]);
 
   return (
     <header className="sticky top-0 z-40 border-b border-border/70 bg-background/70 backdrop-blur-xl">
@@ -34,33 +45,28 @@ export function AppNav() {
           </span>
         </Link>
 
-        {/* nav */}
-        <nav className="ml-2 flex flex-1 items-center gap-0.5 overflow-x-auto">
+        {/* desktop nav (unchanged at md+) */}
+        <nav className="ml-2 hidden flex-1 items-center gap-0.5 overflow-x-auto md:flex">
           {NAV.map((item) => {
-            const active =
-              item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
+            const active = isActive(pathname, item.href);
             return (
               <Link
                 key={item.href}
                 href={item.href}
                 className={cn(
                   "relative rounded-md px-2.5 py-1.5 font-mono text-[11px] uppercase tracking-[0.12em] transition-colors",
-                  active
-                    ? "text-foreground"
-                    : "text-muted-foreground hover:text-foreground"
+                  active ? "text-foreground" : "text-muted-foreground hover:text-foreground"
                 )}
               >
-                {active && (
-                  <span className="absolute inset-x-2 -bottom-[7px] h-px bg-primary" />
-                )}
+                {active && <span className="absolute inset-x-2 -bottom-[7px] h-px bg-primary" />}
                 {item.label}
               </Link>
             );
           })}
         </nav>
 
-        {/* status + theme */}
-        <div className="flex items-center gap-3 whitespace-nowrap">
+        {/* right controls */}
+        <div className="ml-auto flex items-center gap-2 whitespace-nowrap md:ml-0 md:gap-3">
           <span className="hidden items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground md:flex">
             <span className="relative flex size-1.5">
               <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-500/70" />
@@ -69,8 +75,45 @@ export function AppNav() {
             live
           </span>
           <ThemeToggle />
+          {/* mobile menu toggle. Wrapper carries md:hidden so it wins by
+              specificity over the button's base `grid` display utility. */}
+          <div className="md:hidden">
+            <button
+              type="button"
+              aria-label={open ? "Close menu" : "Open menu"}
+              aria-expanded={open}
+              onClick={() => setOpen((v) => !v)}
+              className="grid size-8 place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+            >
+              {open ? <X className="size-5" /> : <Menu className="size-5" />}
+            </button>
+          </div>
         </div>
       </div>
+
+      {/* mobile menu panel (hidden at md+) */}
+      {open && (
+        <nav className="border-t border-border/70 bg-background/95 px-3 py-2 backdrop-blur-xl md:hidden">
+          {NAV.map((item) => {
+            const active = isActive(pathname, item.href);
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={cn(
+                  "flex items-center rounded-md px-3 py-2.5 font-mono text-[13px] uppercase tracking-[0.12em] transition-colors",
+                  active
+                    ? "bg-muted text-foreground"
+                    : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+                )}
+              >
+                {active && <span className="mr-2 text-primary">▸</span>}
+                {item.label}
+              </Link>
+            );
+          })}
+        </nav>
+      )}
     </header>
   );
 }

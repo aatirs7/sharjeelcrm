@@ -32,9 +32,9 @@ export function LeadsFilters({
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
       <Select value={status} onValueChange={(v) => setParam('status', v ?? 'all')}>
-        <SelectTrigger className="w-[180px]">
+        <SelectTrigger className="w-full sm:w-[180px]">
           <SelectValue placeholder="Status" />
         </SelectTrigger>
         <SelectContent>
@@ -48,7 +48,7 @@ export function LeadsFilters({
       </Select>
 
       <Select value={rep} onValueChange={(v) => setParam('rep', v ?? 'all')}>
-        <SelectTrigger className="w-[200px]">
+        <SelectTrigger className="w-full sm:w-[200px]">
           <SelectValue placeholder="Rep" />
         </SelectTrigger>
         <SelectContent>

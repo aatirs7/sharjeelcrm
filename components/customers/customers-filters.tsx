@@ -24,7 +24,7 @@ export function CustomersFilters({ risk }: { risk: string }) {
 
   return (
     <Select value={risk} onValueChange={(v) => setParam(v ?? 'all')}>
-      <SelectTrigger className="w-[200px]">
+      <SelectTrigger className="w-full sm:w-[200px]">
         <SelectValue />
       </SelectTrigger>
       <SelectContent>

@@ -37,10 +37,10 @@ export function OrdersFilters({
   ]
 
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
       {groups.map((g) => (
         <Select key={g.key} value={g.value} onValueChange={(v) => setParam(g.key, v ?? 'all')}>
-          <SelectTrigger className="w-[180px]">
+          <SelectTrigger className="w-full sm:w-[180px]">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>

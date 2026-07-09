@@ -24,7 +24,7 @@ export function IssuesFilters({ replacement }: { replacement: string }) {
 
   return (
     <Select value={replacement} onValueChange={(v) => setParam(v ?? 'all')}>
-      <SelectTrigger className="w-[220px]">
+      <SelectTrigger className="w-full sm:w-[220px]">
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
