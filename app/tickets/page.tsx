@@ -74,6 +74,7 @@ export default async function TicketsPage({
               <TableHead>Type</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Code</TableHead>
+              <TableHead>Email</TableHead>
               <TableHead>Interest</TableHead>
               <TableHead>Created</TableHead>
             </TableRow>
@@ -81,7 +82,7 @@ export default async function TicketsPage({
           <TableBody>
             {rows.length === 0 && (
               <TableRow>
-                <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
                   No tickets match these filters.
                 </TableCell>
               </TableRow>
@@ -112,7 +113,10 @@ export default async function TicketsPage({
                     <span className="text-muted-foreground">—</span>
                   )}
                 </TableCell>
-                <TableCell className="max-w-[260px] truncate text-muted-foreground">
+                <TableCell className="max-w-[180px] truncate text-xs text-muted-foreground">
+                  {lead.email ?? <span className="text-muted-foreground/50">—</span>}
+                </TableCell>
+                <TableCell className="max-w-[240px] truncate text-muted-foreground">
                   {lead.interest ?? '—'}
                 </TableCell>
                 <TableCell className="whitespace-nowrap text-xs text-muted-foreground tabular-nums">
