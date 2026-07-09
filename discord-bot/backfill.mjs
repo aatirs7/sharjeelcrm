@@ -49,13 +49,16 @@ function classify(text) {
   return 'unknown'
 }
 
-// Rough affiliate/referral code hints (e.g. "AA10", "code AC").
+// Affiliate/referral code hints. Conservative to avoid false positives:
+// only AA10-style codes (letters+digits), or an explicit "code/promo X" that
+// contains a digit. Bare words like "referred" are ignored.
 function detectCode(text) {
   if (!text) return null
-  const m = text.match(/\b(?:code|discount|coupon|ref(?:erral)?)\s*[:#-]?\s*([A-Za-z0-9]{2,10})\b/i)
-  if (m) return m[1]
-  const m2 = text.match(/\b([A-Z]{2}\d{1,3})\b/) // AA10-style
-  return m2 ? m2[1] : null
+  const m1 = text.match(/\b([A-Za-z]{2,4}\d{1,3})\b/) // AA10 / AC5
+  if (m1) return m1[1].toUpperCase()
+  const m2 = text.match(/\b(?:code|promo|coupon|discount)\s*[:#-]?\s*([A-Za-z0-9]{2,10})\b/i)
+  if (m2 && /\d/.test(m2[1])) return m2[1].toUpperCase()
+  return null
 }
 
 function firstMention(content) {
