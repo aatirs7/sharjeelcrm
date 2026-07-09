@@ -27,6 +27,7 @@ export function AffiliateFormDialog({
     id: string
     name: string
     discordUsername: string | null
+    referralCode: string | null
     commissionRate: string
     notes: string | null
   }
@@ -37,6 +38,7 @@ export function AffiliateFormDialog({
   const [pending, startTransition] = useTransition()
   const [name, setName] = useState(affiliate?.name ?? '')
   const [discord, setDiscord] = useState(affiliate?.discordUsername ?? '')
+  const [code, setCode] = useState(affiliate?.referralCode ?? '')
   const [percent, setPercent] = useState(
     affiliate ? (Number(affiliate.commissionRate) * 100).toString() : '10'
   )
@@ -49,6 +51,7 @@ export function AffiliateFormDialog({
         const payload = {
           name,
           discordUsername: discord || null,
+          referralCode: code || null,
           commissionRatePercent: percent || null,
           notes: notes || null,
         }
@@ -89,6 +92,15 @@ export function AffiliateFormDialog({
                 onChange={(e) => setPercent(e.target.value)}
               />
             </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="aff-code">Referral code</Label>
+            <Input
+              id="aff-code"
+              value={code}
+              onChange={(e) => setCode(e.target.value)}
+              placeholder="AA10"
+            />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="aff-notes">Notes</Label>

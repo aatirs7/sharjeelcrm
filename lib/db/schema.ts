@@ -126,6 +126,8 @@ export const affiliates = pgTable('affiliates', {
   id: uuid('id').primaryKey().defaultRandom(),
   name: text('name').notNull(),
   discordUsername: text('discord_username'),
+  // Referral / discount code buyers cite (e.g. "AA10"). Unique so codes map 1:1.
+  referralCode: text('referral_code').unique(),
   // TODO(sharjeel): confirm rate. numeric returns as a string; see lib/money.ts.
   commissionRate: numeric('commission_rate', { precision: 5, scale: 4 }).notNull().default('0.10'),
   referralsCount: integer('referrals_count').notNull().default(0),
@@ -169,6 +171,7 @@ export const leads = pgTable('leads', {
   ticketLink: text('ticket_link'),
   discordChannelId: text('discord_channel_id'), // filled by bot in phase 2
   source: leadSource('source').notNull().default('discord'),
+  referralCode: text('referral_code'), // code the buyer cited; maps to an affiliate
   interest: text('interest'),
   budgetCents: integer('budget_cents'),
   status: leadStatus('status').notNull().default('new_lead'),

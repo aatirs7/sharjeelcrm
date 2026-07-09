@@ -1,8 +1,7 @@
 import Link from 'next/link'
-import { and, desc, eq } from 'drizzle-orm'
+import { and, desc, eq, ilike } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { leads, reps, leadStatus as leadStatusEnum } from '@/lib/db/schema'
-import { formatCents } from '@/lib/money'
 import { titleCase } from '@/lib/labels'
 import { LeadStatusBadge } from '@/components/status-badge'
 import {
@@ -20,15 +19,16 @@ import { PageHeader } from '@/components/page-header'
 export default async function LeadsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string; rep?: string }>
+  searchParams: Promise<{ status?: string; rep?: string; code?: string }>
 }) {
-  const { status, rep } = await searchParams
+  const { status, rep, code } = await searchParams
 
   const conditions = []
   if (status && leadStatusEnum.enumValues.includes(status as never)) {
     conditions.push(eq(leads.status, status as (typeof leadStatusEnum.enumValues)[number]))
   }
   if (rep) conditions.push(eq(leads.assignedRepId, rep))
+  if (code) conditions.push(ilike(leads.referralCode, `%${code}%`))
 
   const [rows, repList] = await Promise.all([
     db.query.leads.findMany({
@@ -48,7 +48,7 @@ export default async function LeadsPage({
         action={<LeadQuickAdd reps={repList} />}
       />
 
-      <LeadsFilters reps={repList} status={status ?? 'all'} rep={rep ?? 'all'} />
+      <LeadsFilters reps={repList} status={status ?? 'all'} rep={rep ?? 'all'} code={code ?? ''} />
 
       <div className="overflow-hidden rounded-xl border bg-card">
         <Table>
@@ -57,8 +57,8 @@ export default async function LeadsPage({
               <TableHead>Discord</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Source</TableHead>
+              <TableHead>Code</TableHead>
               <TableHead>Interest</TableHead>
-              <TableHead className="text-right">Budget</TableHead>
               <TableHead>Assigned</TableHead>
             </TableRow>
           </TableHeader>
@@ -83,9 +83,15 @@ export default async function LeadsPage({
                   </Link>
                 </TableCell>
                 <TableCell className="text-muted-foreground">{titleCase(lead.source)}</TableCell>
-                <TableCell className="text-muted-foreground">{lead.interest ?? '—'}</TableCell>
-                <TableCell className="text-right tabular-nums">
-                  {lead.budgetCents != null ? formatCents(lead.budgetCents) : '—'}
+                <TableCell className="font-mono text-xs">
+                  {lead.referralCode ? (
+                    <span className="rounded bg-muted px-1.5 py-0.5">{lead.referralCode}</span>
+                  ) : (
+                    <span className="text-muted-foreground">—</span>
+                  )}
+                </TableCell>
+                <TableCell className="max-w-[280px] truncate text-muted-foreground">
+                  {lead.interest ?? '—'}
                 </TableCell>
                 <TableCell className="text-muted-foreground">
                   {lead.assignedRep?.displayName ?? lead.assignedRep?.email ?? '—'}

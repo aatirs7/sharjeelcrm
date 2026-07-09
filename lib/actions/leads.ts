@@ -37,6 +37,7 @@ export interface CreateLeadInput {
   interest?: string | null
   budgetDollars?: number | string | null
   ticketLink?: string | null
+  referralCode?: string | null
   assignedRepId?: string | null
 }
 
@@ -50,6 +51,7 @@ export async function createLead(input: CreateLeadInput): Promise<string> {
       interest: input.interest?.trim() || null,
       budgetCents: dollarsToCents(input.budgetDollars),
       ticketLink: input.ticketLink?.trim() || null,
+      referralCode: input.referralCode?.trim() || null,
       assignedRepId: input.assignedRepId || rep.id,
     })
     .returning()
@@ -62,6 +64,7 @@ export interface UpdateLeadInput {
   budgetDollars?: number | string | null
   source?: LeadSourceValue
   ticketLink?: string | null
+  referralCode?: string | null
   assignedRepId?: string | null
   notes?: string | null
   lastContactAt?: string | null
@@ -75,6 +78,7 @@ export async function updateLeadFields(id: string, input: UpdateLeadInput): Prom
   if (input.budgetDollars !== undefined) patch.budgetCents = dollarsToCents(input.budgetDollars)
   if (input.source !== undefined) patch.source = input.source
   if (input.ticketLink !== undefined) patch.ticketLink = input.ticketLink?.trim() || null
+  if (input.referralCode !== undefined) patch.referralCode = input.referralCode?.trim() || null
   if (input.assignedRepId !== undefined) patch.assignedRepId = input.assignedRepId || null
   if (input.notes !== undefined) patch.notes = input.notes ?? null
   if (input.lastContactAt !== undefined)
@@ -136,10 +140,18 @@ export async function convertLeadToOrder(id: string, input: ConvertLeadInput): P
     customer = created
   }
 
-  // Resolve affiliate commission rate (if any).
+  // Resolve the affiliate: explicit choice wins; otherwise map the lead's
+  // referral code to an affiliate that owns that code.
+  let affiliateId = input.affiliateId || null
+  if (!affiliateId && lead.referralCode) {
+    const byCode = await db.query.affiliates.findFirst({
+      where: eq(affiliates.referralCode, lead.referralCode),
+    })
+    if (byCode) affiliateId = byCode.id
+  }
   let commissionRate: string | null = null
-  if (input.affiliateId) {
-    const aff = await db.query.affiliates.findFirst({ where: eq(affiliates.id, input.affiliateId) })
+  if (affiliateId) {
+    const aff = await db.query.affiliates.findFirst({ where: eq(affiliates.id, affiliateId) })
     commissionRate = aff?.commissionRate ?? null
   }
 
@@ -151,7 +163,7 @@ export async function convertLeadToOrder(id: string, input: ConvertLeadInput): P
     .values({
       leadId: id,
       customerId: customer.id,
-      affiliateId: input.affiliateId || null,
+      affiliateId,
       package: input.package.trim(),
       priceCents,
       supplierPayoutCents: money.supplierPayoutCents,

@@ -4,6 +4,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { leadStatus } from '@/lib/db/schema'
 import { titleCase } from '@/lib/labels'
 import type { Rep } from '@/lib/db/schema'
+import { Input } from '@/components/ui/input'
 import {
   Select,
   SelectContent,
@@ -16,17 +17,19 @@ export function LeadsFilters({
   reps,
   status,
   rep,
+  code,
 }: {
   reps: Rep[]
   status: string
   rep: string
+  code: string
 }) {
   const router = useRouter()
   const params = useSearchParams()
 
   function setParam(key: string, value: string) {
     const next = new URLSearchParams(params.toString())
-    if (value === 'all') next.delete(key)
+    if (value === 'all' || value === '') next.delete(key)
     else next.set(key, value)
     router.push(`/leads?${next.toString()}`)
   }
@@ -60,6 +63,16 @@ export function LeadsFilters({
           ))}
         </SelectContent>
       </Select>
+
+      <Input
+        defaultValue={code}
+        placeholder="Referral code…"
+        className="w-full font-mono sm:w-[160px]"
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') setParam('code', (e.target as HTMLInputElement).value.trim())
+        }}
+        onBlur={(e) => setParam('code', e.target.value.trim())}
+      />
     </div>
   )
 }

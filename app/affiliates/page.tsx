@@ -34,6 +34,7 @@ export default async function AffiliatesPage() {
           <TableHeader>
             <TableRow>
               <TableHead>Name</TableHead>
+              <TableHead>Code</TableHead>
               <TableHead className="text-right">Rate</TableHead>
               <TableHead className="text-right">Sales</TableHead>
               <TableHead className="text-right">Revenue</TableHead>
@@ -45,7 +46,7 @@ export default async function AffiliatesPage() {
           <TableBody>
             {rows.length === 0 && (
               <TableRow>
-                <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
                   No affiliates yet.
                 </TableCell>
               </TableRow>
@@ -56,6 +57,13 @@ export default async function AffiliatesPage() {
                   {a.name}
                   {a.discordUsername && (
                     <div className="text-xs text-muted-foreground">{a.discordUsername}</div>
+                  )}
+                </TableCell>
+                <TableCell className="font-mono text-xs">
+                  {a.referralCode ? (
+                    <span className="rounded bg-muted px-1.5 py-0.5">{a.referralCode}</span>
+                  ) : (
+                    <span className="text-muted-foreground">—</span>
                   )}
                 </TableCell>
                 <TableCell className="text-right tabular-nums">
@@ -78,6 +86,7 @@ export default async function AffiliatesPage() {
                         id: a.id,
                         name: a.name,
                         discordUsername: a.discordUsername,
+                        referralCode: a.referralCode,
                         commissionRate: a.commissionRate,
                         notes: a.notes,
                       }}

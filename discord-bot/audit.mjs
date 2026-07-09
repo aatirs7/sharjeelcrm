@@ -10,8 +10,8 @@
 // script lists the servers the bot is in and exits so you can pick one.
 
 const API = 'https://discord.com/api/v10'
-const TOKEN = process.env.DISCORD_BOT_TOKEN
-const GUILD_ID = process.env.DISCORD_GUILD_ID
+const TOKEN = process.env.DISCORD_BOT_TOKEN || process.env.BOT_TOKEN
+const GUILD_ID = process.env.DISCORD_GUILD_ID || process.env.GUILD_ID
 
 if (!TOKEN) {
   console.error('Missing DISCORD_BOT_TOKEN. Add it to .env.local (do not paste it in chat).')

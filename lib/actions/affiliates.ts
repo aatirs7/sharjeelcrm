@@ -10,6 +10,7 @@ import { recomputeAffiliateRollups } from '../automations'
 export interface AffiliateInput {
   name: string
   discordUsername?: string | null
+  referralCode?: string | null
   commissionRatePercent?: number | string | null // entered as a percent, e.g. 10
   notes?: string | null
 }
@@ -29,6 +30,7 @@ export async function createAffiliate(input: AffiliateInput): Promise<string> {
     .values({
       name: input.name.trim(),
       discordUsername: input.discordUsername?.trim() || null,
+      referralCode: input.referralCode?.trim() || null,
       commissionRate: rate ?? '0.10',
       notes: input.notes?.trim() || null,
     })
@@ -42,6 +44,7 @@ export async function updateAffiliate(id: string, input: Partial<AffiliateInput>
   const patch: Partial<typeof affiliates.$inferInsert> = {}
   if (input.name !== undefined) patch.name = input.name.trim()
   if (input.discordUsername !== undefined) patch.discordUsername = input.discordUsername?.trim() || null
+  if (input.referralCode !== undefined) patch.referralCode = input.referralCode?.trim() || null
   if (input.notes !== undefined) patch.notes = input.notes?.trim() || null
   const rate = percentToRate(input.commissionRatePercent)
   if (rate !== undefined) patch.commissionRate = rate
