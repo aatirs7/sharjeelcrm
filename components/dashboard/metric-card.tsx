@@ -1,5 +1,4 @@
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { cn } from '@/lib/utils'
+import { cn } from "@/lib/utils";
 
 export function MetricCard({
   label,
@@ -7,27 +6,37 @@ export function MetricCard({
   sub,
   accent,
 }: {
-  label: string
-  value: React.ReactNode
-  sub?: React.ReactNode
-  accent?: 'default' | 'admin'
+  label: string;
+  value: React.ReactNode;
+  sub?: React.ReactNode;
+  accent?: "default" | "admin";
 }) {
   return (
-    <Card className={cn(accent === 'admin' && 'border-amber-300/60 dark:border-amber-800/60')}>
-      <CardHeader className="pb-2">
-        <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-1.5">
+    <div
+      className={cn(
+        "group relative overflow-hidden rounded-xl border bg-card p-4 ring-1 ring-foreground/[0.04] transition-colors hover:border-foreground/15",
+        accent === "admin" && "border-primary/25"
+      )}
+    >
+      {accent === "admin" && (
+        <span className="absolute inset-y-0 left-0 w-px bg-primary/60" />
+      )}
+      <div className="flex items-center justify-between gap-2">
+        <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-muted-foreground">
           {label}
-          {accent === 'admin' && (
-            <span className="text-[10px] uppercase tracking-wide text-amber-600 dark:text-amber-400">
-              admin
-            </span>
-          )}
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="text-2xl font-semibold tabular-nums">{value}</div>
-        {sub != null && <div className="text-xs text-muted-foreground mt-1">{sub}</div>}
-      </CardContent>
-    </Card>
-  )
+        </span>
+        {accent === "admin" && (
+          <span className="rounded-[4px] bg-primary/12 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.12em] text-primary">
+            admin
+          </span>
+        )}
+      </div>
+      <div className="mt-3 font-heading text-[1.7rem] leading-none font-semibold tabular-nums">
+        {value}
+      </div>
+      {sub != null && (
+        <div className="mt-2 font-mono text-[11px] text-muted-foreground">{sub}</div>
+      )}
+    </div>
+  );
 }

@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/table'
 import { TaskRowActions } from '@/components/tasks/task-row-actions'
 import { TasksFilters } from '@/components/tasks/tasks-filters'
+import { PageHeader } from '@/components/page-header'
 
 function dueLabel(dueAt: Date | string | null, open: boolean) {
   if (!dueAt) return { text: '—', overdue: false }
@@ -42,15 +43,12 @@ export default async function TasksPage({
   })
 
   return (
-    <div className="space-y-4">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Tasks</h1>
-        <p className="text-sm text-muted-foreground">{rows.length} shown</p>
-      </div>
+    <div className="space-y-5">
+      <PageHeader marker="tasks" title="Tasks" meta={`${rows.length} shown`} />
 
       <TasksFilters status={status ?? 'all'} type={type ?? 'all'} />
 
-      <div className="rounded-lg border">
+      <div className="overflow-hidden rounded-xl border bg-card">
         <Table>
           <TableHeader>
             <TableRow>

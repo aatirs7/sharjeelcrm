@@ -6,6 +6,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { MetricCard } from '@/components/dashboard/metric-card'
 import { PeriodToggle } from '@/components/dashboard/period-toggle'
 import { TaskInbox } from '@/components/tasks/task-inbox'
+import { PageHeader, SectionLabel } from '@/components/page-header'
 
 export default async function DashboardPage({
   searchParams,
@@ -20,20 +21,18 @@ export default async function DashboardPage({
   const m = await getDashboardMetrics(period)
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
-          <p className="text-sm text-muted-foreground">
-            {rep ? `${rep.displayName ?? rep.email ?? rep.id}` : ''}
-            {isAdmin ? ' · admin' : ' · rep'} · {m.rangeLabel.toLowerCase()}
-          </p>
-        </div>
-        <PeriodToggle period={period} />
-      </div>
+    <div className="space-y-8">
+      <PageHeader
+        marker="overview"
+        title="Dashboard"
+        meta={`${rep ? rep.displayName ?? rep.email ?? rep.id : ''} · ${isAdmin ? 'admin' : 'rep'} · ${m.rangeLabel.toLowerCase()}`}
+        action={<PeriodToggle period={period} />}
+      />
 
       {/* Revenue / sales */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="space-y-3">
+      <SectionLabel>revenue &amp; sales</SectionLabel>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <MetricCard label={`Revenue (${period})`} value={formatCents(m.revenueCents)} sub={`${m.paidOrders} paid orders`} />
         <MetricCard label="Avg order value" value={formatCents(m.avgOrderValueCents)} />
         <MetricCard
@@ -58,9 +57,12 @@ export default async function DashboardPage({
           </>
         )}
       </div>
+      </div>
 
       {/* Pipeline / support */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="space-y-3">
+      <SectionLabel>pipeline &amp; support</SectionLabel>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <MetricCard label={`New leads (${period})`} value={m.newLeads} />
         <MetricCard
           label="Close rate"
@@ -77,6 +79,7 @@ export default async function DashboardPage({
           sub={m.expiringWarranties ? `${m.expiringWarranties} expiring ≤7d` : 'none expiring'}
         />
         <MetricCard label="Open issues" value={m.openIssues} />
+      </div>
       </div>
 
       {rep ? (

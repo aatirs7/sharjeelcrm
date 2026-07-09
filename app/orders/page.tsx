@@ -20,6 +20,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { OrdersFilters } from '@/components/orders/orders-filters'
+import { PageHeader } from '@/components/page-header'
 
 export default async function OrdersPage({
   searchParams,
@@ -43,15 +44,12 @@ export default async function OrdersPage({
   })
 
   return (
-    <div className="space-y-4">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Orders</h1>
-        <p className="text-sm text-muted-foreground">{rows.length} shown</p>
-      </div>
+    <div className="space-y-5">
+      <PageHeader marker="orders" title="Orders" meta={`${rows.length} shown`} />
 
       <OrdersFilters status={status ?? 'all'} payment={payment ?? 'all'} delivery={delivery ?? 'all'} />
 
-      <div className="rounded-lg border">
+      <div className="overflow-hidden rounded-xl border bg-card">
         <Table>
           <TableHeader>
             <TableRow>

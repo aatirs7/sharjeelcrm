@@ -13,6 +13,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { CustomersFilters } from '@/components/customers/customers-filters'
+import { PageHeader } from '@/components/page-header'
 
 export default async function CustomersPage({
   searchParams,
@@ -30,15 +31,12 @@ export default async function CustomersPage({
   })
 
   return (
-    <div className="space-y-4">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Customers</h1>
-        <p className="text-sm text-muted-foreground">{rows.length} shown</p>
-      </div>
+    <div className="space-y-5">
+      <PageHeader marker="customers" title="Customers" meta={`${rows.length} shown`} />
 
       <CustomersFilters risk={risk ?? 'all'} />
 
-      <div className="rounded-lg border">
+      <div className="overflow-hidden rounded-xl border bg-card">
         <Table>
           <TableHeader>
             <TableRow>

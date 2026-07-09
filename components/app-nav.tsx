@@ -3,48 +3,73 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 const NAV = [
-  { href: "/", label: "Dashboard" },
-  { href: "/leads", label: "Leads" },
-  { href: "/orders", label: "Orders" },
-  { href: "/tasks", label: "Tasks" },
-  { href: "/customers", label: "Customers" },
-  { href: "/issues", label: "Issues" },
-  { href: "/affiliates", label: "Affiliates" },
+  { href: "/", label: "dashboard" },
+  { href: "/leads", label: "leads" },
+  { href: "/orders", label: "orders" },
+  { href: "/tasks", label: "tasks" },
+  { href: "/customers", label: "customers" },
+  { href: "/issues", label: "issues" },
+  { href: "/affiliates", label: "affiliates" },
 ];
 
 export function AppNav() {
   const pathname = usePathname();
 
   return (
-    <header className="border-b bg-background/95 backdrop-blur sticky top-0 z-40">
-      <div className="max-w-7xl mx-auto px-4 h-14 flex items-center gap-6">
-        <Link href="/" className="font-semibold tracking-tight whitespace-nowrap">
-          TikTok Shop CRM
+    <header className="sticky top-0 z-40 border-b border-border/70 bg-background/70 backdrop-blur-xl">
+      <div className="mx-auto flex h-14 max-w-[76rem] items-center gap-5 px-5">
+        {/* wordmark */}
+        <Link href="/" className="group flex items-center gap-2.5 whitespace-nowrap">
+          <span className="grid size-6 place-items-center rounded-[5px] bg-primary text-primary-foreground shadow-sm">
+            <span className="size-2 rounded-[2px] bg-primary-foreground" />
+          </span>
+          <span className="flex items-baseline gap-2">
+            <span className="font-heading text-[15px] font-semibold tracking-tight">The Desk</span>
+            <span className="hidden font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground sm:inline">
+              crm://tiktok-shop
+            </span>
+          </span>
         </Link>
-        <nav className="flex items-center gap-1 text-sm">
+
+        {/* nav */}
+        <nav className="ml-2 flex flex-1 items-center gap-0.5 overflow-x-auto">
           {NAV.map((item) => {
             const active =
-              item.href === "/"
-                ? pathname === "/"
-                : pathname.startsWith(item.href);
+              item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
             return (
               <Link
                 key={item.href}
                 href={item.href}
                 className={cn(
-                  "px-3 py-1.5 rounded-md transition-colors",
+                  "relative rounded-md px-2.5 py-1.5 font-mono text-[11px] uppercase tracking-[0.12em] transition-colors",
                   active
-                    ? "bg-muted font-medium text-foreground"
-                    : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
+                    ? "text-foreground"
+                    : "text-muted-foreground hover:text-foreground"
                 )}
               >
+                {active && (
+                  <span className="absolute inset-x-2 -bottom-[7px] h-px bg-primary" />
+                )}
                 {item.label}
               </Link>
             );
           })}
         </nav>
+
+        {/* status + theme */}
+        <div className="flex items-center gap-3 whitespace-nowrap">
+          <span className="hidden items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground md:flex">
+            <span className="relative flex size-1.5">
+              <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-500/70" />
+              <span className="relative inline-flex size-1.5 rounded-full bg-emerald-500" />
+            </span>
+            live
+          </span>
+          <ThemeToggle />
+        </div>
       </div>
     </header>
   );

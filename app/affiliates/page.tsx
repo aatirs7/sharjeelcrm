@@ -15,21 +15,21 @@ import {
 } from '@/components/ui/table'
 import { AffiliateFormDialog } from '@/components/affiliates/affiliate-form-dialog'
 import { MarkCommissionPaid } from '@/components/affiliates/mark-commission-paid'
+import { PageHeader } from '@/components/page-header'
 
 export default async function AffiliatesPage() {
   const rows = await db.select().from(affiliates).orderBy(desc(affiliates.revenueCents))
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Affiliates</h1>
-          <p className="text-sm text-muted-foreground">{rows.length} total</p>
-        </div>
-        <AffiliateFormDialog mode="create" trigger={<Button>Add affiliate</Button>} />
-      </div>
+    <div className="space-y-5">
+      <PageHeader
+        marker="affiliates"
+        title="Affiliates"
+        meta={`${rows.length} total`}
+        action={<AffiliateFormDialog mode="create" trigger={<Button>Add affiliate</Button>} />}
+      />
 
-      <div className="rounded-lg border">
+      <div className="overflow-hidden rounded-xl border bg-card">
         <Table>
           <TableHeader>
             <TableRow>
