@@ -1,0 +1,19 @@
+{
+  "name": "the-desk-discord-bot",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Phase-2 Discord bot for The Desk CRM — ticket open -> lead + staff tagging",
+  "scripts": {
+    "start": "node bot.mjs",
+    "audit": "node audit.mjs",
+    "backfill": "node backfill.mjs",
+    "backfill:write": "node backfill.mjs --write"
+  },
+  "dependencies": {
+    "discord.js": "^14.16.3"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

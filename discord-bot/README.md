@@ -63,10 +63,39 @@ The audit prints the channel tree, roles, the likely ticket category, and a
 sample ticket channel's **member permission overwrites** — that's how we
 identify the buyer who opened a ticket without reading any messages.
 
-## 4. (Next) build + host the bot
+## 4. The live bot (`bot.mjs`)
 
-Once the audit tells us how tickets are structured, the bot itself is a small
-`discord.js` process that listens for ticket-channel creation and POSTs to
-`/api/discord/lead`. It must run 24/7 → deploy to **Railway** (or Fly.io):
-a Node worker, `DISCORD_BOT_TOKEN` + `CRM_URL` + `DISCORD_WEBHOOK_SECRET` as
-secrets. (Vercel's serverless can't hold a gateway connection.)
+On a new Ticket Tool ticket the bot:
+1. detects the buyer (the member overwrite that isn't Ticket Tool / a bot) and
+   **creates a lead** immediately,
+2. posts **Purchase / Support / Warranty** buttons — staff tag the ticket
+   (Support/Warranty marks the lead lost in the CRM),
+3. **enriches** the lead (interest + referral code) from the buyer's first message.
+
+### Run locally (test)
+```
+cd discord-bot && npm install
+# from repo root, with BOT_TOKEN + DISCORD_WEBHOOK_SECRET in .env.local:
+node --env-file=.env.local discord-bot/bot.mjs
+```
+Then open a test ticket in Discord — watch the console + the CRM `/leads`.
+
+### Backfill existing tickets
+```
+node --env-file=.env.local discord-bot/backfill.mjs           # dry run
+node --env-file=.env.local discord-bot/backfill.mjs --write    # import purchases
+```
+
+### Deploy 24/7 (Railway)
+The bot must stay connected, so it can't run on Vercel. Deploy on **Railway**:
+1. https://railway.app → New Project → Deploy from GitHub repo (this repo).
+2. Settings → **Root Directory** = `discord-bot`. Start command = `npm start`.
+3. **Variables**: `BOT_TOKEN`, `DISCORD_WEBHOOK_SECRET` (same value as Vercel),
+   `GUILD_ID=1457844826203623630`, `CRM_URL=https://sharjeelcrm.vercel.app`.
+4. Deploy. Logs should show `Bot online as …`.
+
+(Fly.io works too — same idea: a Node worker with those env vars.)
+
+### Config (env)
+- `TICKET_PREFIX` (default `ticket-`) — channel-name prefix that marks a ticket.
+- `TICKET_TOOL_ID` (default set) — Ticket Tool's user id, excluded from buyer detection.
