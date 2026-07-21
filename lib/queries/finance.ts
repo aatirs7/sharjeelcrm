@@ -6,6 +6,7 @@ export interface FinanceStats {
   revenueCents: number
   revenueThisMonthCents: number
   supplierPayoutCents: number
+  serviceFeeCents: number
   grossProfitCents: number
   commissionCents: number
   netProfitCents: number
@@ -52,6 +53,7 @@ export async function getFinanceStats(): Promise<FinanceStats> {
     revenueCents: sum(paid, (o) => o.priceCents),
     revenueThisMonthCents: sum(paidThisMonth, (o) => o.priceCents),
     supplierPayoutCents: sum(paid, (o) => o.supplierPayoutCents),
+    serviceFeeCents: sum(paid, (o) => o.serviceFeeCents ?? 0),
     grossProfitCents: sum(paid, (o) => o.profitCents),
     commissionCents: sum(paid, (o) => o.commissionCents),
     netProfitCents: sum(paid, (o) => o.netProfitCents ?? 0),

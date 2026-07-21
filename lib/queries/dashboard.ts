@@ -15,6 +15,7 @@ export interface DashboardMetrics {
   refundsCount: number
   refundsCents: number
   supplierPayoutCents: number // admin
+  serviceFeeCents: number // admin
   netProfitCents: number // admin
   newLeads: number
   closeRatePct: number | null
@@ -66,6 +67,7 @@ export async function getDashboardMetrics(period: Period): Promise<DashboardMetr
   const paidOrders = paidInRange.length
   const avgOrderValueCents = paidOrders ? Math.round(revenueCents / paidOrders) : 0
   const supplierPayoutCents = paidInRange.reduce((s, o) => s + o.supplierPayoutCents, 0)
+  const serviceFeeCents = paidInRange.reduce((s, o) => s + (o.serviceFeeCents ?? 0), 0)
   const netProfitCents = paidInRange.reduce((s, o) => s + (o.netProfitCents ?? 0), 0)
 
   const refundsInRange = allOrders.filter(
@@ -117,6 +119,7 @@ export async function getDashboardMetrics(period: Period): Promise<DashboardMetr
     refundsCount,
     refundsCents,
     supplierPayoutCents,
+    serviceFeeCents,
     netProfitCents,
     newLeads,
     closeRatePct,

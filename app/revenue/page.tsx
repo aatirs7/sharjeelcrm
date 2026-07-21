@@ -4,7 +4,7 @@ import { db } from '@/lib/db'
 import { leads } from '@/lib/db/schema'
 import { getFinanceStats } from '@/lib/queries/finance'
 import { getStripeStats } from '@/lib/stripe'
-import { formatCents } from '@/lib/money'
+import { formatCents, splitRevenue, SUPPLIER_PCT, SERVICE_PCT, PROFIT_PCT } from '@/lib/money'
 import { titleCase } from '@/lib/labels'
 import { cn } from '@/lib/utils'
 import { MetricCard } from '@/components/dashboard/metric-card'
@@ -30,13 +30,15 @@ export default async function RevenuePage() {
   const maxMethod = Math.max(1, ...f.byMethod.map((m) => m.cents))
 
   // When Stripe is connected, the money figures track real Stripe money;
-  // the 85/15 split is derived from it. Otherwise fall back to CRM orders.
+  // the 55/10/35 split is derived from it. Otherwise fall back to CRM orders.
   const live = stripe.configured && !stripe.error
   const revenueCents = live ? stripe.grossCents ?? 0 : f.revenueCents
   const monthCents = live ? stripe.monthCents ?? 0 : f.revenueThisMonthCents
   const paidCount = live ? stripe.paidCount ?? 0 : f.paidCount
-  const supplierPayoutCents = Math.round(revenueCents * 0.85)
-  const grossProfitCents = revenueCents - supplierPayoutCents
+  const split = splitRevenue(revenueCents)
+  const supplierPayoutCents = split.supplierPayoutCents
+  const serviceFeeCents = split.serviceFeeCents
+  const grossProfitCents = split.profitCents
   const commissionCents = f.commissionCents
   const netProfitCents = grossProfitCents - commissionCents
   const refundsCount = live ? stripe.refundedCount ?? 0 : f.refundsCount
@@ -68,8 +70,9 @@ export default async function RevenuePage() {
           <MetricCard label="Revenue (all-time)" value={formatCents(revenueCents)} sub={`${paidCount} payments`} />
           <MetricCard label="Revenue (this month)" value={formatCents(monthCents)} />
           <MetricCard label="Net profit" value={formatCents(netProfitCents)} sub="after commission" accent="admin" />
-          <MetricCard label="Gross profit (15%)" value={formatCents(grossProfitCents)} accent="admin" />
-          <MetricCard label="Supplier payouts (85%)" value={formatCents(supplierPayoutCents)} />
+          <MetricCard label={`Gross profit (${PROFIT_PCT})`} value={formatCents(grossProfitCents)} accent="admin" />
+          <MetricCard label={`Supplier payouts (${SUPPLIER_PCT})`} value={formatCents(supplierPayoutCents)} />
+          <MetricCard label={`Service (${SERVICE_PCT})`} value={formatCents(serviceFeeCents)} />
           <MetricCard label="Affiliate commissions" value={formatCents(commissionCents)} />
           <MetricCard label="Commission owed" value={formatCents(f.commissionOwedCents)} sub={`${formatCents(f.commissionPaidCents)} paid`} />
           <MetricCard
@@ -169,9 +172,27 @@ export default async function RevenuePage() {
           </Card>
         ) : (
           <>
-            <div className="grid gap-3 sm:grid-cols-3">
-              <MetricCard label="Available balance" value={formatCents(stripe.availableCents ?? 0)} sub={stripe.currency} />
-              <MetricCard label="Pending" value={formatCents(stripe.pendingCents ?? 0)} />
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <MetricCard
+                label="Already withdrawn"
+                value={formatCents(stripe.withdrawnCents ?? 0)}
+                sub={
+                  stripe.payoutsInTransitCents
+                    ? `${formatCents(stripe.payoutsInTransitCents)} in transit`
+                    : 'paid out to bank'
+                }
+              />
+              <MetricCard
+                label="Available to withdraw"
+                value={formatCents(stripe.availableCents ?? 0)}
+                sub={stripe.currency}
+                accent="admin"
+              />
+              <MetricCard
+                label="Incoming"
+                value={formatCents(stripe.pendingCents ?? 0)}
+                sub="not yet settled"
+              />
               <MetricCard label="Volume (30d)" value={formatCents(stripe.volume30dCents ?? 0)} />
             </div>
             <div className="grid gap-6 lg:grid-cols-2">

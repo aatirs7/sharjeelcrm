@@ -3,9 +3,10 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Menu, X } from "lucide-react";
+import { Lock, Menu, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { signOut } from "@/lib/actions/auth";
 
 const NAV = [
   { href: "/", label: "dashboard" },
@@ -29,6 +30,9 @@ export function AppNav() {
   // Close the mobile menu on navigation.
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => setOpen(false), [pathname]);
+
+  // The PIN screen stands alone — no nav behind the lock.
+  if (pathname === "/login") return null;
 
   return (
     <header className="sticky top-0 z-40 border-b border-border/70 bg-background/70 backdrop-blur-xl">
@@ -76,6 +80,16 @@ export function AppNav() {
             live
           </span>
           <ThemeToggle />
+          <form action={signOut}>
+            <button
+              type="submit"
+              aria-label="Lock"
+              title="Lock"
+              className="grid size-8 place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+            >
+              <Lock className="size-4" />
+            </button>
+          </form>
           {/* mobile menu toggle. Wrapper carries md:hidden so it wins by
               specificity over the button's base `grid` display utility. */}
           <div className="md:hidden">

@@ -174,6 +174,7 @@ async function main() {
         package: b.package,
         priceCents: b.priceCents,
         supplierPayoutCents: money.supplierPayoutCents,
+        serviceFeeCents: money.serviceFeeCents,
         profitCents: money.profitCents,
         commissionCents: money.commissionCents,
         netProfitCents: money.netProfitCents,

@@ -1,7 +1,7 @@
 import { getCurrentRep } from '@/lib/auth'
 import { getDashboardMetrics, type Period } from '@/lib/queries/dashboard'
 import { getStripeStats } from '@/lib/stripe'
-import { formatCents } from '@/lib/money'
+import { formatCents, splitRevenue, SUPPLIER_PCT, SERVICE_PCT, PROFIT_PCT } from '@/lib/money'
 import { titleCase } from '@/lib/labels'
 import { Card, CardContent } from '@/components/ui/card'
 import { MetricCard } from '@/components/dashboard/metric-card'
@@ -26,8 +26,10 @@ export default async function DashboardPage({
   const revenueCents = live ? (period === 'week' ? stripe.weekCents : stripe.monthCents) ?? 0 : m.revenueCents
   const payCount = live ? (period === 'week' ? stripe.weekCount : stripe.monthCount) ?? 0 : m.paidOrders
   const aovCents = payCount ? Math.round(revenueCents / payCount) : 0
-  const payoutCents = live ? Math.round(revenueCents * 0.85) : m.supplierPayoutCents
-  const profitCents = live ? revenueCents - Math.round(revenueCents * 0.85) : m.netProfitCents
+  const split = splitRevenue(revenueCents)
+  const payoutCents = live ? split.supplierPayoutCents : m.supplierPayoutCents
+  const serviceCents = live ? split.serviceFeeCents : m.serviceFeeCents
+  const profitCents = live ? split.profitCents : m.netProfitCents
   const refundsCount = live ? stripe.refundedCount ?? 0 : m.refundsCount
   const refundsCents = live ? stripe.refundedCents ?? 0 : m.refundsCents
 
@@ -43,7 +45,7 @@ export default async function DashboardPage({
       {/* Revenue / sales */}
       <div className="space-y-3">
       <SectionLabel>revenue &amp; sales</SectionLabel>
-      <div className={`grid gap-3 sm:grid-cols-2 ${isAdmin ? 'lg:grid-cols-3' : 'lg:grid-cols-4'}`}>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <MetricCard label={`Revenue (${period})`} value={formatCents(revenueCents)} sub={`${payCount} payments`} />
         <MetricCard label="Avg order value" value={formatCents(aovCents)} />
         <MetricCard
@@ -52,21 +54,26 @@ export default async function DashboardPage({
           sub={refundsCount ? formatCents(refundsCents) : 'none'}
         />
         <MetricCard label="Orders awaiting delivery" value={m.awaitingDelivery} />
-        {isAdmin && (
-          <>
-            <MetricCard
-              label="Supplier payout (85%)"
-              value={formatCents(payoutCents)}
-              accent="admin"
-            />
-            <MetricCard
-              label="Profit (15%)"
-              value={formatCents(profitCents)}
-              accent="admin"
-            />
-          </>
-        )}
       </div>
+      {isAdmin && (
+        <div className="grid gap-3 sm:grid-cols-3">
+          <MetricCard
+            label={`Supplier payout (${SUPPLIER_PCT})`}
+            value={formatCents(payoutCents)}
+            accent="admin"
+          />
+          <MetricCard
+            label={`Service (${SERVICE_PCT})`}
+            value={formatCents(serviceCents)}
+            accent="admin"
+          />
+          <MetricCard
+            label={`Profit (${PROFIT_PCT})`}
+            value={formatCents(profitCents)}
+            accent="admin"
+          />
+        </div>
+      )}
       </div>
 
       {/* Pipeline / support */}

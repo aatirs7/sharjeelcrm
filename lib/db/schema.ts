@@ -202,6 +202,7 @@ export const orders = pgTable('orders', {
   package: text('package').notNull(),
   priceCents: integer('price_cents').notNull(),
   supplierPayoutCents: integer('supplier_payout_cents').notNull(),
+  serviceFeeCents: integer('service_fee_cents').notNull().default(0),
   profitCents: integer('profit_cents').notNull(),
   commissionCents: integer('commission_cents').notNull().default(0),
   netProfitCents: integer('net_profit_cents'),

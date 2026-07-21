@@ -4,7 +4,7 @@ import { desc, eq } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { orders, issues } from '@/lib/db/schema'
 import { isAdmin } from '@/lib/auth'
-import { formatCents } from '@/lib/money'
+import { formatCents, SUPPLIER_PCT, SERVICE_PCT, PROFIT_PCT } from '@/lib/money'
 import { titleCase } from '@/lib/labels'
 import { warrantyState, daysUntil } from '@/lib/warranty'
 import { OrderStatusBadge, WarrantyBadge } from '@/components/status-badge'
@@ -87,8 +87,9 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
             </CardHeader>
             <CardContent>
               <Row label="Price" value={formatCents(order.priceCents)} />
-              <Row label="Supplier payout (85%)" value={formatCents(order.supplierPayoutCents)} />
-              <Row label="Profit (15%)" value={formatCents(order.profitCents)} />
+              <Row label={`Supplier payout (${SUPPLIER_PCT})`} value={formatCents(order.supplierPayoutCents)} />
+              <Row label={`Service (${SERVICE_PCT})`} value={formatCents(order.serviceFeeCents ?? 0)} />
+              <Row label={`Profit (${PROFIT_PCT})`} value={formatCents(order.profitCents)} />
               <Row label="Commission" value={formatCents(order.commissionCents)} />
               <Row label="Net profit" value={formatCents(order.netProfitCents ?? 0)} />
             </CardContent>

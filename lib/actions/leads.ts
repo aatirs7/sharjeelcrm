@@ -171,6 +171,7 @@ export async function convertLeadToOrder(id: string, input: ConvertLeadInput): P
       package: input.package.trim(),
       priceCents,
       supplierPayoutCents: money.supplierPayoutCents,
+      serviceFeeCents: money.serviceFeeCents,
       profitCents: money.profitCents,
       commissionCents: money.commissionCents,
       netProfitCents: money.netProfitCents,
