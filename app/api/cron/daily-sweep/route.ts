@@ -5,6 +5,7 @@ import { orders, tasks } from '@/lib/db/schema'
 import { flagExpiringWarranties } from '@/lib/automations'
 import { sweepCommissions, assignMonthlyTiers } from '@/lib/commissions'
 import { postWeeklyLeaderboard } from '@/lib/discord-posts'
+import { deleteStaleTicketChannels } from '@/lib/discord'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -35,6 +36,15 @@ async function handle(req: Request): Promise<NextResponse> {
   // Post the weekly leaderboard once a week (Mondays) to the affiliates channel.
   const leaderboardPosted = now.getDay() === 1 ? await postWeeklyLeaderboard() : false
 
+  // Prune ticket channels older than the retention window so the guild stays
+  // under Discord's ~500-channel cap. Capped per run; drains a backlog gradually.
+  const guildId = process.env.GUILD_ID
+  const retentionDays = Number(process.env.TICKET_RETENTION_DAYS || '30')
+  const ticketCleanup =
+    guildId && process.env.BOT_TOKEN
+      ? await deleteStaleTicketChannels(guildId, retentionDays)
+      : { eligible: 0, deleted: 0 }
+
   const [expiredRow, overdueRow] = await Promise.all([
     db
       .select({ n: sql<number>`count(*)::int` })
@@ -56,6 +66,8 @@ async function handle(req: Request): Promise<NextResponse> {
     commissionsCancelled: commissionSweep.cancelled,
     tiersChanged,
     leaderboardPosted,
+    ticketChannelsEligible: ticketCleanup.eligible,
+    ticketChannelsDeleted: ticketCleanup.deleted,
   })
 }
 

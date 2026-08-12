@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { eq, sql } from 'drizzle-orm'
+import { eq, isNotNull, sql } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { leads, coaches } from '@/lib/db/schema'
 import { ingestTicketLead } from '@/lib/leads-ingest'
@@ -8,6 +8,7 @@ import {
   findBuyer,
   firstBuyerMessage,
   detectReferralCode,
+  matchKnownPromo,
   classifyTicket,
   classifyTicketCategory,
   assignMemberRole,
@@ -50,6 +51,13 @@ async function handle(req: Request): Promise<NextResponse> {
     .sort((a, b) => (BigInt(a.id) < BigInt(b.id) ? -1 : 1)) // oldest first
     .slice(0, MAX_PER_RUN)
 
+  // Known coach promo codes drive attribution (reliable match beats the regex).
+  const promoRows = await db
+    .select({ promoCode: coaches.promoCode })
+    .from(coaches)
+    .where(isNotNull(coaches.promoCode))
+  const promoCodes = promoRows.map((r) => r.promoCode!).filter(Boolean)
+
   let created = 0
   let noBuyer = 0
   let rolesAssigned = 0
@@ -61,7 +69,7 @@ async function handle(req: Request): Promise<NextResponse> {
     }
     const ticketLink = `https://discord.com/channels/${guildId}/${ch.id}`
     const message = await firstBuyerMessage(ch.id, buyer.id)
-    const code = detectReferralCode(message)
+    const code = matchKnownPromo(message, promoCodes) ?? detectReferralCode(message)
     const email = message?.match(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/)?.[0] ?? null
 
     const result = await ingestTicketLead({

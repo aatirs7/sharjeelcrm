@@ -28,6 +28,43 @@ export async function dput(path: string): Promise<Response> {
   return fetch(`${API}${path}`, { method: 'PUT', headers: authHeaders() })
 }
 
+export async function ddelete(path: string): Promise<Response> {
+  return fetch(`${API}${path}`, { method: 'DELETE', headers: authHeaders() })
+}
+
+const DISCORD_EPOCH = 1420070400000
+/** Channel/message creation time in ms, decoded from its snowflake id. */
+export function snowflakeMs(id: string): number {
+  return Number(BigInt(id) >> BigInt(22)) + DISCORD_EPOCH
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+
+/**
+ * Delete ticket channels older than `olderThanDays` (both `ticket-*` and
+ * `closed-*`), capped per run so a large backlog drains gradually instead of a
+ * mass purge. Keeps the guild under Discord's ~500-channel limit. CRM lead rows
+ * are untouched — only the Discord channel is removed.
+ */
+export async function deleteStaleTicketChannels(
+  guildId: string,
+  olderThanDays: number,
+  cap = 30
+): Promise<{ eligible: number; deleted: number }> {
+  const chans = await dget<DiscordChannel[]>(`/guilds/${guildId}/channels`)
+  const cutoff = Date.now() - olderThanDays * 86_400_000
+  const stale = chans
+    .filter((c) => c.type === 0 && /^(ticket-|closed-)/i.test(c.name) && snowflakeMs(c.id) < cutoff)
+    .sort((a, b) => (BigInt(a.id) < BigInt(b.id) ? -1 : 1)) // oldest first
+  let deleted = 0
+  for (const c of stale.slice(0, cap)) {
+    const res = await ddelete(`/channels/${c.id}`)
+    if (res.ok) deleted++
+    await sleep(300) // stay within channel-delete rate limits
+  }
+  return { eligible: stale.length, deleted }
+}
+
 export interface DiscordRole {
   id: string
   name: string
@@ -154,6 +191,31 @@ export function classifyTicketCategory(text: string | null): RouteCategory {
   if (coach.test(t)) return 'COACH'
   if (bundle.test(t)) return 'BUNDLE'
   return 'SHOP'
+}
+
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+/**
+ * Match the buyer's message against the KNOWN coach promo codes (the reliable
+ * path now that codes are seeded). Longer/most-specific codes win. To avoid a
+ * common word like "MAX" or "LEO" falsely crediting a coach, a short letter-only
+ * code (< 6 chars, no digit) only counts when it appears next to a referral cue
+ * (code / promo / referred / sent me / coach / from).
+ */
+export function matchKnownPromo(text: string | null, codes: string[]): string | null {
+  if (!text || codes.length === 0) return null
+  const sorted = [...new Set(codes.filter(Boolean))].sort((a, b) => b.length - a.length)
+  const cue = /(code|promo|coupon|discount|referr|sent me|from|coach)/i
+  const hasCue = cue.test(text)
+  for (const code of sorted) {
+    const re = new RegExp(`\\b${escapeRegExp(code)}\\b`, 'i')
+    if (!re.test(text)) continue
+    const distinctive = /\d/.test(code) || code.length >= 6
+    if (distinctive || hasCue) return code.toUpperCase()
+  }
+  return null
 }
 
 /** Conservative referral-code detection (AA10 / RAY10 / "code X<digit>"). */

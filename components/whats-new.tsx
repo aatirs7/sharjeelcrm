@@ -11,6 +11,8 @@ import {
   KeyRound,
   Trophy,
   Sparkles,
+  Bot,
+  Megaphone,
   ArrowRight,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -71,6 +73,16 @@ const STEPS: Step[] = [
     body: 'The leaderboard ranks coaches by confirmed buyers each week and assigns tiers monthly. Content tracks each coach’s posts — views, DMs, buyers, and revenue.',
     href: '/leaderboard',
     cta: 'Open Leaderboard',
+  },
+  {
+    icon: Bot,
+    title: 'Discord roles, automatic',
+    body: 'Every coach is linked to their Discord lead + partner roles. When a buyer’s ticket cites a coach’s promo code they get that coach’s lead role, and once they’re a confirmed buyer they get the partner role — assigned by the bot, no manual work.',
+  },
+  {
+    icon: Megaphone,
+    title: 'Discord announcements & tagging',
+    body: 'New tickets are auto-tagged by keyword (shop / bundle / coach / partner / support). The weekly leaderboard posts to #affiliates-program every Monday, and every payout drops a proof message there automatically.',
   },
 ]
 
