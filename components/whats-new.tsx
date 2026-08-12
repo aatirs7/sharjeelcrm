@@ -78,17 +78,19 @@ export function WhatsNew({ role = 'admin' }: { role?: 'admin' | 'coach' }) {
   const pathname = usePathname()
   const [open, setOpen] = useState(false)
   const [i, setI] = useState(0)
+  const [dontShow, setDontShow] = useState(true)
 
-  // Auto-open once per browser, only for admins outside the login screen.
+  // Auto-open for admins outside the login screen, unless it has been
+  // permanently dismissed (localStorage) or already seen this session.
   useEffect(() => {
     if (role !== 'admin' || pathname === '/login') return
     try {
-      if (!localStorage.getItem(SEEN_KEY)) {
+      if (!localStorage.getItem(SEEN_KEY) && !sessionStorage.getItem(SEEN_KEY)) {
         // eslint-disable-next-line react-hooks/set-state-in-effect
         setOpen(true)
       }
     } catch {
-      /* localStorage unavailable */
+      /* storage unavailable */
     }
   }, [role, pathname])
 
@@ -105,7 +107,10 @@ export function WhatsNew({ role = 'admin' }: { role?: 'admin' | 'coach' }) {
   function close() {
     setOpen(false)
     try {
-      localStorage.setItem(SEEN_KEY, '1')
+      // "Don't show again" persists forever; otherwise just skip the rest of
+      // this browser session so it can resurface on a later visit.
+      if (dontShow) localStorage.setItem(SEEN_KEY, '1')
+      else sessionStorage.setItem(SEEN_KEY, '1')
     } catch {
       /* ignore */
     }
@@ -163,21 +168,32 @@ export function WhatsNew({ role = 'admin' }: { role?: 'admin' | 'coach' }) {
           </div>
         </div>
 
-        <div className="flex items-center justify-between gap-3 border-t border-border/60 px-4 pt-4 sm:px-10">
-          <Button variant="ghost" onClick={close}>
-            Skip
-          </Button>
-          <div className="flex items-center gap-2">
-            {i > 0 && (
-              <Button variant="outline" onClick={() => setI((v) => v - 1)}>
-                Back
-              </Button>
-            )}
-            {last ? (
-              <Button onClick={close}>Done</Button>
-            ) : (
-              <Button onClick={() => setI((v) => v + 1)}>Next</Button>
-            )}
+        <div className="flex flex-col gap-3 border-t border-border/60 px-4 pt-4 sm:px-10">
+          <label className="flex cursor-pointer items-center justify-center gap-2 text-sm text-muted-foreground select-none">
+            <input
+              type="checkbox"
+              checked={dontShow}
+              onChange={(e) => setDontShow(e.target.checked)}
+              className="size-4 accent-[var(--primary)]"
+            />
+            Don&apos;t show me this again
+          </label>
+          <div className="flex items-center justify-between gap-3">
+            <Button variant="ghost" onClick={close}>
+              Skip
+            </Button>
+            <div className="flex items-center gap-2">
+              {i > 0 && (
+                <Button variant="outline" onClick={() => setI((v) => v - 1)}>
+                  Back
+                </Button>
+              )}
+              {last ? (
+                <Button onClick={close}>Done</Button>
+              ) : (
+                <Button onClick={() => setI((v) => v + 1)}>Next</Button>
+              )}
+            </div>
           </div>
         </div>
       </DialogContent>
