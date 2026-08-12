@@ -16,6 +16,7 @@ interface StripeCharge {
   status: string
   paid: boolean
   refunded: boolean
+  disputed?: boolean
   created: number
   description: string | null
   billing_details?: { name: string | null; email: string | null }
@@ -51,8 +52,19 @@ export interface StripeStats {
     created: number
     name: string | null
     email: string | null
+    refunded: boolean
+    amountRefundedCents: number
+    disputed: boolean
   }[]
   payouts?: { id: string; amountCents: number; status: string; arrival: number }[]
+}
+
+/** A refund or chargeback on one charge, used to cancel a commission (M3). */
+export interface RefundSignal {
+  chargeId: string
+  email: string | null
+  amountCents: number
+  kind: 'refund' | 'chargeback'
 }
 
 async function sget<T>(k: string, path: string): Promise<T> {
@@ -148,6 +160,9 @@ export async function getStripeStats(): Promise<StripeStats> {
           created: c.created,
           name: c.billing_details?.name ?? null,
           email: c.billing_details?.email ?? null,
+          refunded: c.refunded || c.amount_refunded > 0,
+          amountRefundedCents: c.amount_refunded,
+          disputed: !!c.disputed,
         })),
       payouts: allPayouts.slice(0, 8).map((p) => ({
         id: p.id,
@@ -158,5 +173,33 @@ export async function getStripeStats(): Promise<StripeStats> {
     }
   } catch (e) {
     return { configured: true, mode, error: e instanceof Error ? e.message : 'stripe error' }
+  }
+}
+
+/**
+ * Refunds + chargebacks across all charges, used by the commission sweep (M3)
+ * to cancel commissions when the buyer's money came back. A dispute outranks a
+ * plain refund (chargeback). Returns an empty list when Stripe isn't configured.
+ */
+export async function getRefundSignals(): Promise<{
+  configured: boolean
+  error?: string
+  signals: RefundSignal[]
+}> {
+  const k = key()
+  if (!k) return { configured: false, signals: [] }
+  try {
+    const charges = await allOf<StripeCharge>(k, '/charges')
+    const signals: RefundSignal[] = charges
+      .filter((c) => c.disputed || c.refunded || c.amount_refunded > 0)
+      .map((c) => ({
+        chargeId: c.id,
+        email: c.billing_details?.email ?? null,
+        amountCents: c.amount,
+        kind: c.disputed ? 'chargeback' : 'refund',
+      }))
+    return { configured: true, signals }
+  } catch (e) {
+    return { configured: true, error: e instanceof Error ? e.message : 'stripe error', signals: [] }
   }
 }

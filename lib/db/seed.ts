@@ -28,6 +28,7 @@ import {
   tasks,
 } from './schema'
 import { computeOrderMoney, commissionForSale, type CoachTier } from '../money'
+import { recomputeCoachRollups } from '../automations'
 
 const DAY = 86_400_000
 const now = Date.now()
@@ -263,21 +264,8 @@ async function main() {
     }
   }
 
-  // --- coach rollups (paid orders only, owed = commission - alreadyPaid) -----
-  for (const coach of [alpha, beta]) {
-    const coachOrders = insertedOrders.filter((o) => o.sourceCoachId === coach.id && o.paymentStatus === 'paid')
-    const revenue = coachOrders.reduce((s, o) => s + o.priceCents, 0)
-    const commission = coachOrders.reduce((s, o) => s + o.commissionCents, 0)
-    await db
-      .update(coaches)
-      .set({
-        closedSalesCount: coachOrders.length,
-        referralsCount: coachOrders.length,
-        revenueCents: revenue,
-        commissionOwedCents: Math.max(0, commission - coach.commissionPaidCents),
-      })
-      .where(eq(coaches.id, coach.id))
-  }
+  // --- coach rollups (ledger-based, same path the app uses) -----------------
+  for (const coach of [alpha, beta]) await recomputeCoachRollups(coach.id)
 
   // --- coach content (one sample row) ---------------------------------------
   await db.insert(coachContent).values({

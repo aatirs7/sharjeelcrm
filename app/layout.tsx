@@ -3,6 +3,7 @@ import { Bricolage_Grotesque, Instrument_Sans, JetBrains_Mono } from "next/font/
 import { Toaster } from "@/components/ui/sonner";
 import { ThemeProvider } from "@/components/theme-provider";
 import { AppNav } from "@/components/app-nav";
+import { getSession } from "@/lib/auth";
 import "./globals.css";
 
 const display = Bricolage_Grotesque({
@@ -27,11 +28,12 @@ export const metadata: Metadata = {
   description: "Internal CRM for TikTok Shop account sales.",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const session = await getSession();
   return (
     <html
       lang="en"
@@ -45,7 +47,7 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          <AppNav />
+          <AppNav role={session?.role ?? "admin"} />
           <main className="flex-1 w-full max-w-[76rem] mx-auto px-5 py-8 md:py-10 space-y-8">
             {children}
           </main>

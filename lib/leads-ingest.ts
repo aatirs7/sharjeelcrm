@@ -15,9 +15,12 @@ export interface TicketLeadInput {
 
 /**
  * Create or update a lead from a Discord ticket. Idempotent per ticket channel
- * (updates the existing lead rather than duplicating). If the referral code
- * matches a coach's promo code, source becomes 'affiliate'. Shared by the
- * Discord webhook route and the hourly poll. (M2 resolves the code to a coach.)
+ * (updates the existing lead rather than duplicating).
+ *
+ * Attribution (M2): the extracted referral code is resolved to a coach by
+ * `promo_code`. A valid code wins and sets `source_coach_id` + `promo_code_used`
+ * (and source 'affiliate'); an unknown or missing code leaves attribution null
+ * for an admin to assign manually. Shared by the Discord webhook route + poll.
  */
 export async function ingestTicketLead(
   input: TicketLeadInput
@@ -29,11 +32,19 @@ export async function ingestTicketLead(
   ).includes(input.source ?? '')
     ? (input.source as (typeof leadSource.enumValues)[number])
     : 'discord'
+
+  // Resolve the code to a coach (valid promo code wins).
+  let sourceCoachId: string | null = null
+  let promoCodeUsed: string | null = null
   if (referralCode) {
     const coach = await db.query.coaches.findFirst({
       where: and(eq(coaches.promoCode, referralCode), isNotNull(coaches.promoCode)),
     })
-    if (coach) source = 'affiliate'
+    if (coach) {
+      source = 'affiliate'
+      sourceCoachId = coach.id
+      promoCodeUsed = coach.promoCode
+    }
   }
 
   const values = {
@@ -42,6 +53,8 @@ export async function ingestTicketLead(
     discordChannelId: input.discordChannelId?.trim() || null,
     source,
     referralCode,
+    sourceCoachId,
+    promoCodeUsed,
     interest: input.interest?.trim() || null,
     ticketType: input.ticketType ?? null,
     email: input.email?.trim().toLowerCase() || null,
@@ -58,6 +71,10 @@ export async function ingestTicketLead(
           discordUsername: values.discordUsername,
           ticketLink: values.ticketLink ?? existing.ticketLink,
           referralCode: values.referralCode ?? existing.referralCode,
+          // Attribution is sticky — an existing coach link is never clobbered by
+          // a re-poll, but a newly-matched code fills a previously-null link.
+          sourceCoachId: existing.sourceCoachId ?? values.sourceCoachId,
+          promoCodeUsed: existing.promoCodeUsed ?? values.promoCodeUsed,
           interest: values.interest ?? existing.interest,
           source: values.source,
           ticketType: existing.ticketType ?? values.ticketType, // don't clobber a staff tag

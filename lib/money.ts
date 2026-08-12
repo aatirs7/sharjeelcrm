@@ -42,6 +42,25 @@ export const TIER_RATE_CENTS: Record<CoachTier, number> = {
   gold: 15000,
 }
 
+/**
+ * Minimum confirmed buyers IN THE CURRENT MONTH to hold each tier. Tier is
+ * resolved from these and stored on the coach by the daily sweep. Tier only
+ * changes the payout amount once COMMISSION_MODE flips to 'flat'.
+ * TODO(sharjeel): confirm the buyer thresholds.
+ */
+export const TIER_THRESHOLDS: Record<CoachTier, number> = {
+  bronze: 0,
+  silver: 5,
+  gold: 15,
+}
+
+/** Tier a coach earns from their confirmed-buyer count this month. */
+export function tierForBuyers(confirmedBuyers: number): CoachTier {
+  if (confirmedBuyers >= TIER_THRESHOLDS.gold) return 'gold'
+  if (confirmedBuyers >= TIER_THRESHOLDS.silver) return 'silver'
+  return 'bronze'
+}
+
 export interface CommissionCoach {
   tier?: CoachTier | null
   commissionRate?: number | string | null

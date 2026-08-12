@@ -16,12 +16,17 @@ function secret(): string {
   return process.env.APP_PIN_SECRET || process.env.CRON_SECRET || 'the-desk-pin-fallback'
 }
 
-/** The value a valid session cookie must hold. */
-export function sessionToken(): string {
-  return createHmac('sha256', secret()).update(pin()).digest('hex')
+/** HMAC-sign an arbitrary payload with the shared secret. Used by sessions too. */
+export function signValue(value: string): string {
+  return createHmac('sha256', secret()).update(value).digest('hex')
 }
 
-function equals(a: string, b: string): boolean {
+/** The value a legacy PIN-only session cookie holds (pre-roles, admin). */
+export function sessionToken(): string {
+  return signValue(pin())
+}
+
+export function equals(a: string, b: string): boolean {
   const x = Buffer.from(a)
   const y = Buffer.from(b)
   return x.length === y.length && timingSafeEqual(x, y)

@@ -15,6 +15,7 @@ import {
 } from '../db/schema'
 import { requireRep } from '../auth'
 import { computeOrderMoney, commissionForSale } from '../money'
+import { syncOrderCommission } from '../commissions'
 import {
   createFollowUpTaskForLead,
   createDeliveryTaskForOrder,
@@ -188,6 +189,7 @@ export async function convertLeadToOrder(id: string, input: ConvertLeadInput): P
   await db.update(leads).set({ status: 'paid' }).where(eq(leads.id, id))
 
   await createDeliveryTaskForOrder(order.id) // rule 3
+  await syncOrderCommission(order.id) // create the pending commission (M3)
   await recomputeOrderRollups(order.id) // rules 7 & 8
 
   revalidatePath('/tickets')

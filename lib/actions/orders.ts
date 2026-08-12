@@ -3,12 +3,15 @@
 import { revalidatePath } from 'next/cache'
 import { eq } from 'drizzle-orm'
 import { db } from '../db'
-import { orders, orderStatus, paymentStatus, paymentMethod } from '../db/schema'
+import { orders, coaches, leads, orderStatus, paymentStatus, paymentMethod } from '../db/schema'
 import { requireRep } from '../auth'
+import { computeOrderMoney, commissionForSale } from '../money'
+import { syncOrderCommission } from '../commissions'
 import {
   createDeliveryFollowupTasks,
   autoCompleteProofTask,
   autoCompleteBuyerConfirmTask,
+  recomputeCoachRollups,
   recomputeOrderRollups,
 } from '../automations'
 
@@ -45,14 +48,68 @@ export async function updateOrderPayment(id: string, input: UpdatePaymentInput):
   if (input.paymentLink !== undefined) patch.paymentLink = input.paymentLink?.trim() || null
   if (input.paymentStatus !== undefined) {
     patch.paymentStatus = input.paymentStatus
-    if (input.paymentStatus === 'paid' && !order.paidAt) patch.paidAt = new Date()
+    if (input.paymentStatus === 'paid' && !order.paidAt) {
+      patch.paidAt = new Date()
+      // Lock attribution at paid time: if the order has no coach yet, inherit
+      // the origin lead's resolved coach and freeze it onto the order.
+      if (!order.sourceCoachId && order.leadId) {
+        const lead = await db.query.leads.findFirst({ where: eq(leads.id, order.leadId) })
+        if (lead?.sourceCoachId) {
+          patch.sourceCoachId = lead.sourceCoachId
+          patch.promoCodeUsed = lead.promoCodeUsed ?? lead.referralCode ?? null
+          const coach = await db.query.coaches.findFirst({
+            where: eq(coaches.id, lead.sourceCoachId),
+          })
+          const commissionCents = commissionForSale(order.priceCents, coach ?? null)
+          patch.commissionCents = commissionCents
+          patch.netProfitCents = order.profitCents - commissionCents
+        }
+      }
+    }
   }
 
   await db.update(orders).set(patch).where(eq(orders.id, id))
-  if (input.paymentStatus !== undefined) await recomputeOrderRollups(id) // rules 7 & 8
+  if (input.paymentStatus !== undefined) {
+    await syncOrderCommission(id) // create/refresh/cancel the commission (M3)
+    await recomputeOrderRollups(id) // rules 7 & 8
+  }
   revalidateOrder(id)
   revalidatePath('/customers')
-  revalidatePath('/affiliates')
+  revalidatePath('/coaches')
+}
+
+/**
+ * Admin: assign (or clear) the coach credited for an order. Recomputes the
+ * commission amount + net profit for the new coach and refreshes rollups for
+ * both the previous and new coach. (M3 keeps the commission ledger row in sync.)
+ */
+export async function assignOrderCoach(id: string, coachId: string | null): Promise<void> {
+  await requireRep()
+  const order = await db.query.orders.findFirst({ where: eq(orders.id, id) })
+  if (!order) throw new Error('Order not found')
+  const previousCoachId = order.sourceCoachId
+
+  const coach = coachId
+    ? await db.query.coaches.findFirst({ where: eq(coaches.id, coachId) })
+    : null
+  const commissionCents = commissionForSale(order.priceCents, coach ?? null)
+  const money = computeOrderMoney({ priceCents: order.priceCents, commissionCents })
+
+  await db
+    .update(orders)
+    .set({
+      sourceCoachId: coach?.id ?? null,
+      promoCodeUsed: coach?.promoCode ?? null,
+      commissionCents,
+      netProfitCents: money.netProfitCents,
+    })
+    .where(eq(orders.id, id))
+
+  await syncOrderCommission(id) // create/refresh/cancel the commission for the new coach
+  if (previousCoachId && previousCoachId !== coach?.id) await recomputeCoachRollups(previousCoachId)
+  if (coach) await recomputeCoachRollups(coach.id)
+  revalidateOrder(id)
+  revalidatePath('/coaches')
 }
 
 /**

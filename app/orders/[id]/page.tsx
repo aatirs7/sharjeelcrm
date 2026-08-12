@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { desc, eq } from 'drizzle-orm'
 import { db } from '@/lib/db'
-import { orders, issues } from '@/lib/db/schema'
+import { orders, issues, coaches } from '@/lib/db/schema'
 import { isAdmin } from '@/lib/auth'
 import { formatCents, commissionExceedsProfit, SUPPLIER_PCT, SERVICE_PCT, PROFIT_PCT } from '@/lib/money'
 import { titleCase } from '@/lib/labels'
@@ -15,6 +15,7 @@ import { OrderProofForm } from '@/components/orders/order-proof-form'
 import { BuyerConfirmToggle } from '@/components/orders/buyer-confirm-toggle'
 import { OrderStatusChanger } from '@/components/orders/order-status-changer'
 import { ReportIssueDialog } from '@/components/issues/report-issue-dialog'
+import { AssignCoachControl } from '@/components/orders/assign-coach-control'
 
 function Row({ label, value }: { label: string; value: React.ReactNode }) {
   return (
@@ -38,9 +39,10 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
   })
   if (!order) notFound()
 
-  const [orderIssues, admin] = await Promise.all([
+  const [orderIssues, admin, coachList] = await Promise.all([
     db.select().from(issues).where(eq(issues.orderId, id)).orderBy(desc(issues.openedAt)),
     isAdmin(),
+    db.select({ id: coaches.id, name: coaches.name, promoCode: coaches.promoCode }).from(coaches),
   ])
 
   const wstate = warrantyState(order.warrantyEnd)
@@ -68,7 +70,14 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
             {order.customer?.discordUsername}
           </Link>
         </span>
-        {order.sourceCoach && <span>Coach: {order.sourceCoach.name}</span>}
+        {admin ? (
+          <span className="flex items-center gap-2">
+            Coach:
+            <AssignCoachControl orderId={order.id} coachId={order.sourceCoachId} coaches={coachList} />
+          </span>
+        ) : (
+          order.sourceCoach && <span>Coach: {order.sourceCoach.name}</span>
+        )}
         {order.lead && (
           <span>
             Origin ticket:{' '}

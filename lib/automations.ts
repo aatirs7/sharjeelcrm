@@ -12,7 +12,7 @@
  */
 import { and, eq, gte, lte, ne } from 'drizzle-orm'
 import { db } from './db'
-import { coaches, customers, leads, orders, tasks } from './db/schema'
+import { coaches, commissions, customers, leads, orders, tasks } from './db/schema'
 
 const HOUR = 3_600_000
 const DAY = 24 * HOUR
@@ -149,10 +149,9 @@ export async function recomputeCustomerRollups(customerId: string): Promise<void
 }
 
 /**
- * Rule 8 — recompute a coach's rollups from orders they drove:
- * closedSalesCount + revenueCents (paid orders), commissionOwedCents
- * (sum of their paid orders' commissionCents minus commissionPaidCents).
- * referralsCount tracks all attributed orders.
+ * Rule 8 — recompute a coach's rollups. Sales/revenue come from the orders they
+ * drove; commission owed/paid come from the commission LEDGER (the source of
+ * truth since M3): owed = approved-but-unpaid, paid = commissions in a payout.
  */
 export async function recomputeCoachRollups(coachId: string): Promise<void> {
   const coach = await db.query.coaches.findFirst({ where: eq(coaches.id, coachId) })
@@ -160,7 +159,12 @@ export async function recomputeCoachRollups(coachId: string): Promise<void> {
   const rows = await db.select().from(orders).where(eq(orders.sourceCoachId, coachId))
   const paid = rows.filter((o) => o.paymentStatus === 'paid')
   const revenueCents = paid.reduce((s, o) => s + o.priceCents, 0)
-  const commissionTotal = paid.reduce((s, o) => s + o.commissionCents, 0)
+
+  const ledger = await db.select().from(commissions).where(eq(commissions.coachId, coachId))
+  const owedCents = ledger
+    .filter((c) => c.status === 'approved' && c.payoutId == null)
+    .reduce((s, c) => s + c.amountCents, 0)
+  const paidCents = ledger.filter((c) => c.status === 'paid').reduce((s, c) => s + c.amountCents, 0)
 
   await db
     .update(coaches)
@@ -168,7 +172,8 @@ export async function recomputeCoachRollups(coachId: string): Promise<void> {
       referralsCount: rows.length,
       closedSalesCount: paid.length,
       revenueCents,
-      commissionOwedCents: Math.max(0, commissionTotal - coach.commissionPaidCents),
+      commissionOwedCents: owedCents,
+      commissionPaidCents: paidCents,
     })
     .where(eq(coaches.id, coachId))
 }

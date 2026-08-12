@@ -27,7 +27,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
 
   const lead = await db.query.leads.findFirst({
     where: eq(leads.id, id),
-    with: { assignedRep: true },
+    with: { assignedRep: true, sourceCoach: true },
   })
   if (!lead) notFound()
 
@@ -79,6 +79,23 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
                   </span>
                 ) : (
                   '—'
+                )
+              }
+            />
+            <Field
+              label="Coach"
+              value={
+                lead.sourceCoach ? (
+                  <span>
+                    {lead.sourceCoach.name}
+                    {lead.promoCodeUsed ? (
+                      <span className="ml-1 font-mono text-xs text-muted-foreground">
+                        {lead.promoCodeUsed}
+                      </span>
+                    ) : null}
+                  </span>
+                ) : (
+                  <span className="text-muted-foreground">unattributed</span>
                 )
               }
             />

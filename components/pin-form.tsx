@@ -24,13 +24,12 @@ export function PinForm({ next }: { next: string }) {
       <Input
         name="pin"
         type="password"
-        inputMode="numeric"
         autoComplete="off"
         autoFocus
-        maxLength={5}
-        placeholder="•••••"
-        aria-label="PIN"
-        className="h-14 text-center font-mono text-2xl tracking-[0.5em] placeholder:tracking-[0.5em]"
+        maxLength={32}
+        placeholder="PIN or code"
+        aria-label="PIN or coach code"
+        className="h-14 text-center font-mono text-xl tracking-[0.25em] placeholder:tracking-normal placeholder:text-base"
       />
       {state.error && (
         <p className="text-center text-sm text-rose-500" role="alert">

@@ -19,7 +19,7 @@ export default async function LoginPage({
         </span>
         <h1 className="font-heading text-2xl font-semibold tracking-tight">The Desk</h1>
         <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-          enter access pin
+          enter pin or coach code
         </p>
       </div>
 

@@ -8,24 +8,30 @@ import { cn } from "@/lib/utils";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { signOut } from "@/lib/actions/auth";
 
-const NAV = [
+const ADMIN_NAV = [
   { href: "/", label: "dashboard" },
   { href: "/tickets", label: "tickets" },
   { href: "/orders", label: "orders" },
   { href: "/revenue", label: "revenue" },
+  { href: "/payouts", label: "payouts" },
+  { href: "/coaches", label: "coaches" },
+  { href: "/leaderboard", label: "leaderboard" },
+  { href: "/content", label: "content" },
   { href: "/tasks", label: "tasks" },
   { href: "/customers", label: "customers" },
   { href: "/issues", label: "issues" },
-  { href: "/affiliates", label: "affiliates" },
 ];
+
+const COACH_NAV = [{ href: "/coach", label: "dashboard" }];
 
 function isActive(pathname: string, href: string) {
   return href === "/" ? pathname === "/" : pathname.startsWith(href);
 }
 
-export function AppNav() {
+export function AppNav({ role = "admin" }: { role?: "admin" | "coach" }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
+  const NAV = role === "coach" ? COACH_NAV : ADMIN_NAV;
 
   // Close the mobile menu on navigation.
   // eslint-disable-next-line react-hooks/set-state-in-effect
