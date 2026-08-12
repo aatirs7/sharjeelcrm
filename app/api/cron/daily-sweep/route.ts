@@ -4,6 +4,7 @@ import { db } from '@/lib/db'
 import { orders, tasks } from '@/lib/db/schema'
 import { flagExpiringWarranties } from '@/lib/automations'
 import { sweepCommissions, assignMonthlyTiers } from '@/lib/commissions'
+import { postWeeklyLeaderboard } from '@/lib/discord-posts'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -31,6 +32,8 @@ async function handle(req: Request): Promise<NextResponse> {
   const flaggedWarranties = await flagExpiringWarranties()
   const commissionSweep = await sweepCommissions()
   const tiersChanged = await assignMonthlyTiers()
+  // Post the weekly leaderboard once a week (Mondays) to the affiliates channel.
+  const leaderboardPosted = now.getDay() === 1 ? await postWeeklyLeaderboard() : false
 
   const [expiredRow, overdueRow] = await Promise.all([
     db
@@ -52,6 +55,7 @@ async function handle(req: Request): Promise<NextResponse> {
     commissionsApproved: commissionSweep.approved,
     commissionsCancelled: commissionSweep.cancelled,
     tiersChanged,
+    leaderboardPosted,
   })
 }
 

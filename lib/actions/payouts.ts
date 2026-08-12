@@ -3,9 +3,10 @@
 import { revalidatePath } from 'next/cache'
 import { and, eq, isNull } from 'drizzle-orm'
 import { db } from '../db'
-import { commissions, payouts } from '../db/schema'
+import { commissions, payouts, coaches } from '../db/schema'
 import { requireRep } from '../auth'
 import { recomputeCoachRollups } from '../automations'
+import { postPayoutProof } from '../discord-posts'
 
 const DAY = 86_400_000
 
@@ -60,6 +61,19 @@ export async function payoutCoach(coachId: string, input: PayoutInput = {}): Pro
   }
 
   await recomputeCoachRollups(coachId)
+
+  // Announce the payout in the coach-facing Discord channel (best-effort).
+  const coach = await db.query.coaches.findFirst({ where: eq(coaches.id, coachId) })
+  if (coach) {
+    await postPayoutProof({
+      coachName: coach.name,
+      amountCents: totalCents,
+      buyerCount: approved.length,
+      method: input.method,
+      ref: input.transactionRef,
+    })
+  }
+
   revalidatePath('/payouts')
   revalidatePath('/coaches')
   return payout.id

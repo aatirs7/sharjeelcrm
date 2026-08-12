@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
-import { sql } from 'drizzle-orm'
+import { eq, sql } from 'drizzle-orm'
 import { db } from '@/lib/db'
-import { leads } from '@/lib/db/schema'
+import { leads, coaches } from '@/lib/db/schema'
 import { ingestTicketLead } from '@/lib/leads-ingest'
 import {
   listTicketChannels,
@@ -9,6 +9,8 @@ import {
   firstBuyerMessage,
   detectReferralCode,
   classifyTicket,
+  classifyTicketCategory,
+  assignMemberRole,
   postTagButtons,
 } from '@/lib/discord'
 
@@ -50,6 +52,7 @@ async function handle(req: Request): Promise<NextResponse> {
 
   let created = 0
   let noBuyer = 0
+  let rolesAssigned = 0
   for (const ch of fresh) {
     const buyer = await findBuyer(ch)
     if (!buyer) {
@@ -61,16 +64,27 @@ async function handle(req: Request): Promise<NextResponse> {
     const code = detectReferralCode(message)
     const email = message?.match(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/)?.[0] ?? null
 
-    await ingestTicketLead({
+    const result = await ingestTicketLead({
       discordUsername: buyer.username,
+      discordUserId: buyer.id,
       discordChannelId: ch.id,
       ticketLink,
       interest: message,
       referralCode: code,
       source: code ? 'affiliate' : 'discord',
       ticketType: classifyTicket(message),
+      routeCategory: classifyTicketCategory(message),
       email,
     })
+
+    // If the ticket is attributed to a coach, give the buyer that coach's lead role.
+    if (result.sourceCoachId) {
+      const coach = await db.query.coaches.findFirst({ where: eq(coaches.id, result.sourceCoachId) })
+      if (coach?.leadRole && (await assignMemberRole(guildId, buyer.id, coach.leadRole))) {
+        rolesAssigned++
+      }
+    }
+
     await postTagButtons(ch.id, buyer.username, ticketLink)
     created++
   }
@@ -81,6 +95,7 @@ async function handle(req: Request): Promise<NextResponse> {
     scanned: channels.length,
     newSinceWatermark: fresh.length,
     leadsCreated: created,
+    rolesAssigned,
     noBuyer,
     capped: channels.filter((c) => BigInt(c.id) > watermark).length > MAX_PER_RUN,
   })

@@ -24,6 +24,50 @@ export async function dpost(path: string, body: unknown): Promise<Response> {
   })
 }
 
+export async function dput(path: string): Promise<Response> {
+  return fetch(`${API}${path}`, { method: 'PUT', headers: authHeaders() })
+}
+
+export interface DiscordRole {
+  id: string
+  name: string
+  position: number
+}
+
+/** All roles in the guild. */
+export async function listRoles(guildId: string): Promise<DiscordRole[]> {
+  return dget<DiscordRole[]>(`/guilds/${guildId}/roles`)
+}
+
+/** Create a role (lands below the bot, so the bot can assign it). Returns its id. */
+export async function createRole(guildId: string, name: string): Promise<string | null> {
+  const res = await dpost(`/guilds/${guildId}/roles`, { name, mentionable: false })
+  if (!res.ok) return null
+  const role = (await res.json()) as { id: string }
+  return role.id
+}
+
+/** Give a member a role. Safe no-op if ids are missing. */
+export async function assignMemberRole(
+  guildId: string,
+  userId: string | null | undefined,
+  roleId: string | null | undefined
+): Promise<boolean> {
+  if (!guildId || !userId || !roleId) return false
+  const res = await dput(`/guilds/${guildId}/members/${userId}/roles/${roleId}`)
+  return res.ok
+}
+
+/** Post a message (content and/or embeds) to a channel. Safe no-op without a channel. */
+export async function postToChannel(
+  channelId: string | null | undefined,
+  payload: { content?: string; embeds?: unknown[] }
+): Promise<boolean> {
+  if (!channelId) return false
+  const res = await dpost(`/channels/${channelId}/messages`, payload)
+  return res.ok
+}
+
 export interface DiscordChannel {
   id: string
   name: string
@@ -87,6 +131,29 @@ export function classifyTicket(text: string | null): 'purchase' | 'support' | 'q
   if (SUPPORT.test(text) && !PURCHASE.test(text)) return 'support'
   if (PURCHASE.test(text) || REFERRAL.test(text) || PAYMENT.test(text)) return 'purchase'
   return 'question'
+}
+
+export type RouteCategory = 'SHOP' | 'BUNDLE' | 'COACH' | 'PARTNER' | 'SUPPORT'
+
+/**
+ * Keyword routing category for a ticket (tag-only — refines the CRM tag, does
+ * not move or ping channels). Precedence: existing-buyer support first, then
+ * partner/coach interest, then bundle vs single-shop purchase.
+ */
+export function classifyTicketCategory(text: string | null): RouteCategory {
+  if (!text) return 'SUPPORT'
+  const t = text.toLowerCase()
+  const support =
+    /\b(warranty|banned|suspended|refund|replace|replacement|not working|can'?t (log|access)|locked out|already (bought|purchased|paid)|payout|got flagged)\b/
+  const partner =
+    /\b(partner|affiliate|promote|promoter|commission|reseller|resell|work with you|join (your|the) team|become an? (affiliate|partner|promoter))\b/
+  const coach = /\b(coach|coaching|mentor|mentorship|course|teach|learn|training|how (do|can) i start|guide me)\b/
+  const bundle = /\b(bundle|package|combo|multiple|bulk|\d+\s*(accounts|accs|shops))\b/
+  if (support.test(t)) return 'SUPPORT'
+  if (partner.test(t)) return 'PARTNER'
+  if (coach.test(t)) return 'COACH'
+  if (bundle.test(t)) return 'BUNDLE'
+  return 'SHOP'
 }
 
 /** Conservative referral-code detection (AA10 / RAY10 / "code X<digit>"). */

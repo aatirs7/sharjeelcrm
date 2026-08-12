@@ -57,9 +57,8 @@ export async function createCoach(input: CoachInput): Promise<string> {
       payoutMethod: input.payoutMethod?.trim() || null,
       trackingLink: input.trackingLink?.trim() || null,
       discordInviteLink: input.discordInviteLink?.trim() || null,
-      // Derive Discord role names from the handle so they are ready for M6.
-      leadRole: `lead-${input.coachCode?.trim() || slugify(input.name)}`,
-      partnerRole: `partner-${input.coachCode?.trim() || slugify(input.name)}`,
+      // leadRole / partnerRole hold Discord role IDs, filled by role provisioning
+      // (the Discord import / partner-role creation), not names.
       notes: input.notes?.trim() || null,
     })
     .returning()

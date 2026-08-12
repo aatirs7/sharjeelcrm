@@ -4,6 +4,7 @@ import { commissions, orders, leads, coaches } from './db/schema'
 import { recomputeCoachRollups } from './automations'
 import { tierForBuyers } from './money'
 import { getRefundSignals, type RefundSignal } from './stripe'
+import { assignMemberRole } from './discord'
 
 const DAY = 86_400_000
 
@@ -136,6 +137,15 @@ export async function sweepCommissions(): Promise<{ approved: number; cancelled:
         .where(eq(commissions.id, c.id))
       touchedCoaches.add(c.coachId)
       approved++
+
+      // Confirmed buyer -> give them the coach's Discord partner role.
+      const guildId = process.env.GUILD_ID
+      if (guildId && coach?.partnerRole && order.leadId) {
+        const lead = leadRows.find((l) => l.id === order.leadId)
+        if (lead?.discordUserId) {
+          await assignMemberRole(guildId, lead.discordUserId, coach.partnerRole)
+        }
+      }
     }
   }
 

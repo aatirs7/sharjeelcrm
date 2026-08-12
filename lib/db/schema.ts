@@ -201,8 +201,10 @@ export const customers = pgTable(
 export const leads = pgTable('leads', {
   id: uuid('id').primaryKey().defaultRandom(),
   discordUsername: text('discord_username').notNull(),
+  discordUserId: text('discord_user_id'), // buyer's Discord user id (for role provisioning)
   ticketLink: text('ticket_link'),
   discordChannelId: text('discord_channel_id'), // filled by the poll cron
+  routeCategory: text('route_category'), // SHOP|BUNDLE|COACH|PARTNER|SUPPORT keyword tag
   source: leadSource('source').notNull().default('discord'),
   ticketType: ticketType('ticket_type'), // purchase | support | question — for tabs
   email: text('email'), // buyer email — matches Stripe charge billing email

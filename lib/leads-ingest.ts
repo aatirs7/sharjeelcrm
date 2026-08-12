@@ -4,13 +4,22 @@ import { leads, coaches, leadSource } from './db/schema'
 
 export interface TicketLeadInput {
   discordUsername: string
+  discordUserId?: string | null
   discordChannelId?: string | null
   ticketLink?: string | null
   source?: string | null
   interest?: string | null
   referralCode?: string | null
   ticketType?: 'purchase' | 'support' | 'question' | 'other' | null
+  routeCategory?: string | null
   email?: string | null
+}
+
+/** The coach id resolved for a lead, so callers can provision Discord roles. */
+export interface IngestResult {
+  leadId: string
+  created: boolean
+  sourceCoachId: string | null
 }
 
 /**
@@ -22,9 +31,7 @@ export interface TicketLeadInput {
  * (and source 'affiliate'); an unknown or missing code leaves attribution null
  * for an admin to assign manually. Shared by the Discord webhook route + poll.
  */
-export async function ingestTicketLead(
-  input: TicketLeadInput
-): Promise<{ leadId: string; created: boolean }> {
+export async function ingestTicketLead(input: TicketLeadInput): Promise<IngestResult> {
   const referralCode = input.referralCode?.trim() || null
 
   let source: (typeof leadSource.enumValues)[number] = (
@@ -49,12 +56,14 @@ export async function ingestTicketLead(
 
   const values = {
     discordUsername: input.discordUsername.trim(),
+    discordUserId: input.discordUserId?.trim() || null,
     ticketLink: input.ticketLink?.trim() || null,
     discordChannelId: input.discordChannelId?.trim() || null,
     source,
     referralCode,
     sourceCoachId,
     promoCodeUsed,
+    routeCategory: input.routeCategory?.trim() || null,
     interest: input.interest?.trim() || null,
     ticketType: input.ticketType ?? null,
     email: input.email?.trim().toLowerCase() || null,
@@ -65,26 +74,29 @@ export async function ingestTicketLead(
       where: eq(leads.discordChannelId, values.discordChannelId),
     })
     if (existing) {
+      // Attribution is sticky — an existing coach link is never clobbered by a
+      // re-poll, but a newly-matched code fills a previously-null link.
+      const coachId = existing.sourceCoachId ?? values.sourceCoachId
       await db
         .update(leads)
         .set({
           discordUsername: values.discordUsername,
+          discordUserId: values.discordUserId ?? existing.discordUserId,
           ticketLink: values.ticketLink ?? existing.ticketLink,
           referralCode: values.referralCode ?? existing.referralCode,
-          // Attribution is sticky — an existing coach link is never clobbered by
-          // a re-poll, but a newly-matched code fills a previously-null link.
-          sourceCoachId: existing.sourceCoachId ?? values.sourceCoachId,
+          sourceCoachId: coachId,
           promoCodeUsed: existing.promoCodeUsed ?? values.promoCodeUsed,
+          routeCategory: existing.routeCategory ?? values.routeCategory,
           interest: values.interest ?? existing.interest,
           source: values.source,
           ticketType: existing.ticketType ?? values.ticketType, // don't clobber a staff tag
           email: existing.email ?? values.email, // don't clobber a set email
         })
         .where(eq(leads.id, existing.id))
-      return { leadId: existing.id, created: false }
+      return { leadId: existing.id, created: false, sourceCoachId: coachId }
     }
   }
 
   const [lead] = await db.insert(leads).values(values).returning({ id: leads.id })
-  return { leadId: lead.id, created: true }
+  return { leadId: lead.id, created: true, sourceCoachId: values.sourceCoachId }
 }

@@ -99,6 +99,18 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
                 )
               }
             />
+            <Field
+              label="Route"
+              value={
+                lead.routeCategory ? (
+                  <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">
+                    {lead.routeCategory}
+                  </span>
+                ) : (
+                  '—'
+                )
+              }
+            />
             <Field label="Interest" value={lead.interest} />
             <Field
               label="Budget"

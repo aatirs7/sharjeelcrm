@@ -43,6 +43,13 @@
       "when": 1784601473000,
       "tag": "0005_v2_coaches",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1786567292160,
+      "tag": "0006_quick_cobalt_man",
+      "breakpoints": true
     }
   ]
 }
