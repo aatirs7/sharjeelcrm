@@ -119,39 +119,43 @@ export function WhatsNew({ role = 'admin' }: { role?: 'admin' | 'coach' }) {
 
   return (
     <Dialog open={open} onOpenChange={(o) => (o ? setOpen(true) : close())}>
-      <DialogContent className="sm:max-w-[460px]">
-        <div className="flex flex-col items-center gap-4 pt-2 text-center">
-          <span className="grid size-12 place-items-center rounded-xl bg-primary/10 text-primary">
-            <Icon className="size-6" />
+      <DialogContent className="w-[92vw] max-w-[720px] sm:max-w-[720px]">
+        <div className="flex min-h-[360px] flex-col items-center justify-center gap-6 px-4 py-8 text-center sm:px-10 sm:py-12">
+          <span className="grid size-20 place-items-center rounded-2xl bg-primary/10 text-primary">
+            <Icon className="size-10" />
           </span>
-          <div className="space-y-2">
-            <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+          <div className="space-y-4">
+            <p className="font-mono text-xs uppercase tracking-[0.2em] text-muted-foreground">
               what&apos;s new · {i + 1} of {STEPS.length}
             </p>
-            <h2 className="font-heading text-xl font-semibold tracking-tight">{step.title}</h2>
-            <p className="text-sm leading-relaxed text-muted-foreground">{step.body}</p>
+            <h2 className="font-heading text-3xl font-semibold tracking-tight sm:text-4xl">
+              {step.title}
+            </h2>
+            <p className="mx-auto max-w-xl text-base leading-relaxed text-muted-foreground sm:text-lg">
+              {step.body}
+            </p>
           </div>
 
           {step.href && (
             <Link
               href={step.href}
               onClick={close}
-              className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline"
+              className="inline-flex items-center gap-2 text-base font-medium text-primary hover:underline"
             >
               {step.cta ?? 'Open'}
-              <ArrowRight className="size-3.5" />
+              <ArrowRight className="size-4" />
             </Link>
           )}
 
           {/* progress dots */}
-          <div className="flex items-center gap-1.5 pt-1">
+          <div className="flex items-center gap-2 pt-1">
             {STEPS.map((_, d) => (
               <button
                 key={d}
                 aria-label={`Step ${d + 1}`}
                 onClick={() => setI(d)}
                 className={cn(
-                  'size-1.5 rounded-full transition-colors',
+                  'size-2 rounded-full transition-colors',
                   d === i ? 'bg-primary' : 'bg-muted-foreground/30 hover:bg-muted-foreground/60'
                 )}
               />
@@ -159,24 +163,20 @@ export function WhatsNew({ role = 'admin' }: { role?: 'admin' | 'coach' }) {
           </div>
         </div>
 
-        <div className="mt-2 flex items-center justify-between gap-3">
-          <Button variant="ghost" size="sm" onClick={close}>
+        <div className="flex items-center justify-between gap-3 border-t border-border/60 px-4 pt-4 sm:px-10">
+          <Button variant="ghost" onClick={close}>
             Skip
           </Button>
           <div className="flex items-center gap-2">
             {i > 0 && (
-              <Button variant="outline" size="sm" onClick={() => setI((v) => v - 1)}>
+              <Button variant="outline" onClick={() => setI((v) => v - 1)}>
                 Back
               </Button>
             )}
             {last ? (
-              <Button size="sm" onClick={close}>
-                Done
-              </Button>
+              <Button onClick={close}>Done</Button>
             ) : (
-              <Button size="sm" onClick={() => setI((v) => v + 1)}>
-                Next
-              </Button>
+              <Button onClick={() => setI((v) => v + 1)}>Next</Button>
             )}
           </div>
         </div>
