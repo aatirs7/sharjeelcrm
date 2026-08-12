@@ -3,6 +3,7 @@ import { Bricolage_Grotesque, Instrument_Sans, JetBrains_Mono } from "next/font/
 import { Toaster } from "@/components/ui/sonner";
 import { ThemeProvider } from "@/components/theme-provider";
 import { AppNav } from "@/components/app-nav";
+import { WhatsNew } from "@/components/whats-new";
 import { getSession } from "@/lib/auth";
 import "./globals.css";
 
@@ -48,6 +49,7 @@ export default async function RootLayout({
           disableTransitionOnChange
         >
           <AppNav role={session?.role ?? "admin"} />
+          <WhatsNew role={session?.role ?? "admin"} />
           <main className="flex-1 w-full max-w-[76rem] mx-auto px-5 py-8 md:py-10 space-y-8">
             {children}
           </main>

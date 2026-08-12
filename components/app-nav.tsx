@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Lock, Menu, X } from "lucide-react";
+import { Lock, Menu, X, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { signOut } from "@/lib/actions/auth";
@@ -85,6 +85,17 @@ export function AppNav({ role = "admin" }: { role?: "admin" | "coach" }) {
             </span>
             live
           </span>
+          {role === "admin" && (
+            <button
+              type="button"
+              aria-label="What's new"
+              title="What's new"
+              onClick={() => window.dispatchEvent(new Event("open-whatsnew"))}
+              className="grid size-8 place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+            >
+              <Sparkles className="size-4" />
+            </button>
+          )}
           <ThemeToggle />
           <form action={signOut}>
             <button
