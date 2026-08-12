@@ -5,7 +5,7 @@ import { toast } from 'sonner'
 import { convertLeadToOrder } from '@/lib/actions/leads'
 import { paymentMethod } from '@/lib/db/schema'
 import { titleCase } from '@/lib/labels'
-import type { Affiliate } from '@/lib/db/schema'
+import type { Coach } from '@/lib/db/schema'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -28,12 +28,12 @@ import {
 
 export function ConvertToOrderDialog({
   leadId,
-  affiliates,
+  coaches,
   defaultPackage,
   defaultPriceDollars,
 }: {
   leadId: string
-  affiliates: Affiliate[]
+  coaches: Coach[]
   defaultPackage: string
   defaultPriceDollars: string
 }) {
@@ -42,7 +42,7 @@ export function ConvertToOrderDialog({
   const [pkg, setPkg] = useState(defaultPackage)
   const [price, setPrice] = useState(defaultPriceDollars)
   const [method, setMethod] = useState<string>('paypal')
-  const [affiliateId, setAffiliateId] = useState<string>('none')
+  const [coachId, setCoachId] = useState<string>('none')
 
   function submit() {
     if (!pkg.trim()) return toast.error('Package is required')
@@ -54,7 +54,7 @@ export function ConvertToOrderDialog({
           package: pkg,
           priceDollars: price,
           paymentMethod: method as (typeof paymentMethod.enumValues)[number],
-          affiliateId: affiliateId === 'none' ? null : affiliateId,
+          coachId: coachId === 'none' ? null : coachId,
         })
       } catch (err) {
         // Next's redirect throws a control-flow error we must not swallow as failure.
@@ -73,7 +73,7 @@ export function ConvertToOrderDialog({
         <DialogHeader>
           <DialogTitle>Convert to order</DialogTitle>
           <DialogDescription>
-            Creates a paid order and marks the ticket won. Money is computed automatically.
+            Creates a paid order and marks the ticket paid. Money is computed automatically.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
@@ -109,16 +109,16 @@ export function ConvertToOrderDialog({
             </div>
           </div>
           <div className="space-y-1.5">
-            <Label>Affiliate (optional)</Label>
-            <Select value={affiliateId} onValueChange={(v) => setAffiliateId(v ?? 'none')}>
+            <Label>Coach (optional)</Label>
+            <Select value={coachId} onValueChange={(v) => setCoachId(v ?? 'none')}>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="none">None</SelectItem>
-                {affiliates.map((a) => (
-                  <SelectItem key={a.id} value={a.id}>
-                    {a.name} ({(Number(a.commissionRate) * 100).toFixed(0)}%)
+                {coaches.map((c) => (
+                  <SelectItem key={c.id} value={c.id}>
+                    {c.name} ({(Number(c.commissionRate) * 100).toFixed(0)}%)
                   </SelectItem>
                 ))}
               </SelectContent>

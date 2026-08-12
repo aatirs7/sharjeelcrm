@@ -1,5 +1,5 @@
 import { db } from '../db'
-import { orders, affiliates } from '../db/schema'
+import { orders, coaches } from '../db/schema'
 
 export interface FinanceStats {
   paidCount: number
@@ -29,7 +29,7 @@ export interface FinanceStats {
 export async function getFinanceStats(): Promise<FinanceStats> {
   const [allOrders, affs] = await Promise.all([
     db.select().from(orders),
-    db.select().from(affiliates),
+    db.select().from(coaches),
   ])
 
   const paid = allOrders.filter((o) => o.paymentStatus === 'paid')
@@ -67,7 +67,7 @@ export async function getFinanceStats(): Promise<FinanceStats> {
     affiliates: affs
       .map((a) => ({
         name: a.name,
-        code: a.referralCode,
+        code: a.promoCode,
         sales: a.closedSalesCount,
         revenueCents: a.revenueCents,
         owedCents: a.commissionOwedCents,

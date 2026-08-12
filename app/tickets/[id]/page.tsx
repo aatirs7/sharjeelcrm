@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { desc, eq } from 'drizzle-orm'
 import { db } from '@/lib/db'
-import { leads, orders, affiliates } from '@/lib/db/schema'
+import { leads, orders, coaches } from '@/lib/db/schema'
 import { formatCents } from '@/lib/money'
 import { titleCase } from '@/lib/labels'
 import { LeadStatusBadge, OrderStatusBadge } from '@/components/status-badge'
@@ -31,12 +31,12 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
   })
   if (!lead) notFound()
 
-  const [linkedOrders, affiliateList] = await Promise.all([
+  const [linkedOrders, coachList] = await Promise.all([
     db.select().from(orders).where(eq(orders.leadId, id)).orderBy(desc(orders.createdAt)),
-    db.select().from(affiliates),
+    db.select().from(coaches),
   ])
 
-  const isWon = lead.status === 'won'
+  const isWon = lead.status === 'paid'
 
   return (
     <div className="space-y-6">
@@ -56,7 +56,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
         {!isWon && (
           <ConvertToOrderDialog
             leadId={lead.id}
-            affiliates={affiliateList}
+            coaches={coachList}
             defaultPackage={lead.interest ?? ''}
             defaultPriceDollars={lead.budgetCents != null ? (lead.budgetCents / 100).toString() : ''}
           />

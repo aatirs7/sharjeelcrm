@@ -2,7 +2,7 @@ import { desc } from 'drizzle-orm'
 import { db } from '@/lib/db'
 
 export const dynamic = 'force-dynamic'
-import { affiliates } from '@/lib/db/schema'
+import { coaches } from '@/lib/db/schema'
 import { formatCents } from '@/lib/money'
 import { Button } from '@/components/ui/button'
 import {
@@ -18,7 +18,7 @@ import { MarkCommissionPaid } from '@/components/affiliates/mark-commission-paid
 import { PageHeader } from '@/components/page-header'
 
 export default async function AffiliatesPage() {
-  const rows = await db.select().from(affiliates).orderBy(desc(affiliates.revenueCents))
+  const rows = await db.select().from(coaches).orderBy(desc(coaches.revenueCents))
 
   return (
     <div className="space-y-5">
@@ -60,8 +60,8 @@ export default async function AffiliatesPage() {
                   )}
                 </TableCell>
                 <TableCell className="font-mono text-xs">
-                  {a.referralCode ? (
-                    <span className="rounded bg-muted px-1.5 py-0.5">{a.referralCode}</span>
+                  {a.promoCode ? (
+                    <span className="rounded bg-muted px-1.5 py-0.5">{a.promoCode}</span>
                   ) : (
                     <span className="text-muted-foreground">—</span>
                   )}
@@ -86,7 +86,7 @@ export default async function AffiliatesPage() {
                         id: a.id,
                         name: a.name,
                         discordUsername: a.discordUsername,
-                        referralCode: a.referralCode,
+                        referralCode: a.promoCode,
                         commissionRate: a.commissionRate,
                         notes: a.notes,
                       }}

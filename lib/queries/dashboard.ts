@@ -81,12 +81,12 @@ export async function getDashboardMetrics(period: Period): Promise<DashboardMetr
   // Leads (cohort by created date in range).
   const leadsInRange = allLeads.filter((l) => onOrAfter(l.createdAt, start))
   const newLeads = leadsInRange.length
-  const won = leadsInRange.filter((l) => l.status === 'won')
+  const won = leadsInRange.filter((l) => l.status === 'paid')
   const lost = leadsInRange.filter((l) => l.status === 'lost').length
   const decided = won.length + lost
   const closeRatePct = decided ? Math.round((won.length / decided) * 100) : null
 
-  // Best lead source among won leads in range.
+  // Best lead source among converted (paid) leads in range.
   const sourceCounts = new Map<string, number>()
   for (const l of won) sourceCounts.set(l.source, (sourceCounts.get(l.source) ?? 0) + 1)
   let bestLeadSource: string | null = null

@@ -8,13 +8,13 @@ import {
   leads,
   customers,
   orders,
-  affiliates,
+  coaches,
   leadStatus,
   leadSource,
   paymentMethod,
 } from '../db/schema'
 import { requireRep } from '../auth'
-import { computeOrderMoney } from '../money'
+import { computeOrderMoney, commissionForSale } from '../money'
 import {
   createFollowUpTaskForLead,
   createDeliveryTaskForOrder,
@@ -96,17 +96,17 @@ export async function updateLeadFields(id: string, input: UpdateLeadInput): Prom
 }
 
 /**
- * Move a lead through the pre-payment machine. `won` is intentionally NOT
- * settable here — reaching `won` happens via convertLeadToOrder, which also
- * creates the order. Fires rule 2 when entering `payment_pending`.
+ * Move a lead through the pre-payment machine. `paid` is intentionally NOT
+ * settable here — reaching `paid` happens via convertLeadToOrder, which also
+ * creates the order. Fires rule 2 when entering `invoice_sent`.
  */
 export async function setLeadStatus(
   id: string,
-  status: Exclude<LeadStatusValue, 'won'>
+  status: Exclude<LeadStatusValue, 'paid'>
 ): Promise<void> {
   await requireRep()
   await db.update(leads).set({ status }).where(eq(leads.id, id))
-  if (status === 'payment_pending') {
+  if (status === 'invoice_sent') {
     await createFollowUpTaskForLead(id)
   }
   revalidatePath('/tickets')
@@ -117,7 +117,7 @@ export interface ConvertLeadInput {
   package: string
   priceDollars: number | string
   paymentMethod: PaymentMethodValue
-  affiliateId?: string | null
+  coachId?: string | null
 }
 
 /**
@@ -144,30 +144,33 @@ export async function convertLeadToOrder(id: string, input: ConvertLeadInput): P
     customer = created
   }
 
-  // Resolve the affiliate: explicit choice wins; otherwise map the lead's
-  // referral code to an affiliate that owns that code.
-  let affiliateId = input.affiliateId || null
-  if (!affiliateId && lead.referralCode) {
-    const byCode = await db.query.affiliates.findFirst({
-      where: eq(affiliates.referralCode, lead.referralCode),
+  // Resolve the coach: an explicit choice wins; otherwise prefer the lead's
+  // locked attribution, falling back to matching its raw referral code to a
+  // coach's promo code. (M2 sets leads.sourceCoachId at ingest.)
+  let coachId = input.coachId || lead.sourceCoachId || null
+  if (!coachId && lead.referralCode) {
+    const byCode = await db.query.coaches.findFirst({
+      where: eq(coaches.promoCode, lead.referralCode),
     })
-    if (byCode) affiliateId = byCode.id
+    if (byCode) coachId = byCode.id
   }
-  let commissionRate: string | null = null
-  if (affiliateId) {
-    const aff = await db.query.affiliates.findFirst({ where: eq(affiliates.id, affiliateId) })
-    commissionRate = aff?.commissionRate ?? null
+  let coach: typeof coaches.$inferSelect | undefined
+  if (coachId) {
+    coach = await db.query.coaches.findFirst({ where: eq(coaches.id, coachId) })
+    if (!coach) coachId = null
   }
 
   const priceCents = dollarsToCents(input.priceDollars) ?? 0
-  const money = computeOrderMoney({ priceCents, commissionRate })
+  const commissionCents = commissionForSale(priceCents, coach ?? null)
+  const money = computeOrderMoney({ priceCents, commissionCents })
 
   const [order] = await db
     .insert(orders)
     .values({
       leadId: id,
       customerId: customer.id,
-      affiliateId,
+      sourceCoachId: coachId,
+      promoCodeUsed: coach?.promoCode ?? lead.promoCodeUsed ?? null,
       package: input.package.trim(),
       priceCents,
       supplierPayoutCents: money.supplierPayoutCents,
@@ -182,7 +185,7 @@ export async function convertLeadToOrder(id: string, input: ConvertLeadInput): P
     })
     .returning()
 
-  await db.update(leads).set({ status: 'won' }).where(eq(leads.id, id))
+  await db.update(leads).set({ status: 'paid' }).where(eq(leads.id, id))
 
   await createDeliveryTaskForOrder(order.id) // rule 3
   await recomputeOrderRollups(order.id) // rules 7 & 8

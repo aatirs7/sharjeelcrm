@@ -5,13 +5,13 @@
  *   supplierPayoutCents = round(priceCents * 0.55)   // supplier
  *   serviceFeeCents     = round(priceCents * 0.10)   // service / infrastructure
  *   profitCents         = priceCents - supplier - service   // the 35%, remainder so it always balances
- *   commissionCents     = affiliate ? round(priceCents * rate) : 0
+ *   commissionCents     = commissionForSale(price, coach)   // coach commission (see seam below)
  *   netProfitCents      = profitCents - commissionCents
  *
- * TODO(sharjeel): confirm commission base before go-live. This computes commission
- * off the GROSS price and subtracts it from the 35% profit (netProfit shrinks,
+ * TODO(sharjeel): confirm commission base before go-live. Commission is computed
+ * off the GROSS price and subtracted from the 35% profit (netProfit shrinks,
  * supplier and service shares are untouched). If commission should come off gross
- * before the split instead, change the split base here — single source of truth.
+ * before the split instead, change the split base here (single source of truth).
  */
 
 export const SUPPLIER_SHARE = 0.55
@@ -23,10 +23,49 @@ export const SUPPLIER_PCT = `${Math.round(SUPPLIER_SHARE * 100)}%`
 export const SERVICE_PCT = `${Math.round(SERVICE_SHARE * 100)}%`
 export const PROFIT_PCT = `${Math.round(PROFIT_SHARE * 100)}%`
 
+// ---------------------------------------------------------------------------
+// Commission seam
+// ---------------------------------------------------------------------------
+// The commission AMOUNT lives behind this one function so switching the model
+// later (percent-of-price -> flat-per-buyer by tier) is a one-line change.
+//
+// TODO(sharjeel): flip COMMISSION_MODE to 'flat' and confirm TIER_RATE_CENTS
+// once the flat model is approved. Nothing downstream changes; every consumer
+// reads commissionForSale()'s output and is agnostic to the mode.
+
+export type CoachTier = 'bronze' | 'silver' | 'gold'
+export const COMMISSION_MODE: 'percent' | 'flat' = 'percent'
+/** Dormant until COMMISSION_MODE === 'flat'. 100 / 125 / 150 dollars. */
+export const TIER_RATE_CENTS: Record<CoachTier, number> = {
+  bronze: 10000,
+  silver: 12500,
+  gold: 15000,
+}
+
+export interface CommissionCoach {
+  tier?: CoachTier | null
+  commissionRate?: number | string | null
+}
+
+/**
+ * The commission a coach earns on one sale, in cents.
+ * - percent mode (current): round(priceCents * coach.commissionRate)
+ * - flat mode (dormant):    TIER_RATE_CENTS[coach.tier]
+ * A missing coach earns nothing.
+ */
+export function commissionForSale(priceCents: number, coach: CommissionCoach | null | undefined): number {
+  if (!coach) return 0
+  if (COMMISSION_MODE === 'flat') {
+    return TIER_RATE_CENTS[(coach.tier ?? 'bronze') as CoachTier]
+  }
+  const rate = coach.commissionRate == null ? 0 : Number(coach.commissionRate)
+  return rate > 0 ? Math.round(priceCents * rate) : 0
+}
+
 export interface OrderMoneyInput {
   priceCents: number
-  /** Affiliate commission rate (e.g. 0.10). Omit / 0 when no affiliate. */
-  commissionRate?: number | string | null
+  /** Commission amount in cents, already resolved via commissionForSale(). */
+  commissionCents?: number
 }
 
 export interface OrderMoney {
@@ -37,14 +76,24 @@ export interface OrderMoney {
   netProfitCents: number
 }
 
-export function computeOrderMoney({ priceCents, commissionRate }: OrderMoneyInput): OrderMoney {
-  const rate = commissionRate == null ? 0 : Number(commissionRate)
+export function computeOrderMoney({ priceCents, commissionCents = 0 }: OrderMoneyInput): OrderMoney {
   const supplierPayoutCents = Math.round(priceCents * SUPPLIER_SHARE)
   const serviceFeeCents = Math.round(priceCents * SERVICE_SHARE)
   const profitCents = priceCents - supplierPayoutCents - serviceFeeCents
-  const commissionCents = rate > 0 ? Math.round(priceCents * rate) : 0
   const netProfitCents = profitCents - commissionCents
   return { supplierPayoutCents, serviceFeeCents, profitCents, commissionCents, netProfitCents }
+}
+
+/**
+ * True when a sale's commission exceeds its profit (net goes negative). Matters
+ * most under flat mode on cheap accounts; surfaced as a warning on order/revenue
+ * views so a coach payout never quietly outruns the margin.
+ */
+export function commissionExceedsProfit(o: {
+  commissionCents?: number | null
+  profitCents?: number | null
+}): boolean {
+  return (o.commissionCents ?? 0) > (o.profitCents ?? 0)
 }
 
 /**

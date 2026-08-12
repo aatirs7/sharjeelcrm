@@ -1,6 +1,6 @@
 import { and, eq, isNotNull } from 'drizzle-orm'
 import { db } from './db'
-import { leads, affiliates, leadSource } from './db/schema'
+import { leads, coaches, leadSource } from './db/schema'
 
 export interface TicketLeadInput {
   discordUsername: string
@@ -16,8 +16,8 @@ export interface TicketLeadInput {
 /**
  * Create or update a lead from a Discord ticket. Idempotent per ticket channel
  * (updates the existing lead rather than duplicating). If the referral code
- * matches an affiliate, source becomes 'affiliate'. Shared by the Discord
- * webhook route and the hourly poll.
+ * matches a coach's promo code, source becomes 'affiliate'. Shared by the
+ * Discord webhook route and the hourly poll. (M2 resolves the code to a coach.)
  */
 export async function ingestTicketLead(
   input: TicketLeadInput
@@ -30,10 +30,10 @@ export async function ingestTicketLead(
     ? (input.source as (typeof leadSource.enumValues)[number])
     : 'discord'
   if (referralCode) {
-    const aff = await db.query.affiliates.findFirst({
-      where: and(eq(affiliates.referralCode, referralCode), isNotNull(affiliates.referralCode)),
+    const coach = await db.query.coaches.findFirst({
+      where: and(eq(coaches.promoCode, referralCode), isNotNull(coaches.promoCode)),
     })
-    if (aff) source = 'affiliate'
+    if (coach) source = 'affiliate'
   }
 
   const values = {

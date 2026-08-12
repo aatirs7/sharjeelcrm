@@ -12,7 +12,7 @@
  */
 import { and, eq, gte, lte, ne } from 'drizzle-orm'
 import { db } from './db'
-import { affiliates, customers, leads, orders, tasks } from './db/schema'
+import { coaches, customers, leads, orders, tasks } from './db/schema'
 
 const HOUR = 3_600_000
 const DAY = 24 * HOUR
@@ -149,28 +149,28 @@ export async function recomputeCustomerRollups(customerId: string): Promise<void
 }
 
 /**
- * Rule 8 — recompute an affiliate's rollups from orders they drove:
+ * Rule 8 — recompute a coach's rollups from orders they drove:
  * closedSalesCount + revenueCents (paid orders), commissionOwedCents
  * (sum of their paid orders' commissionCents minus commissionPaidCents).
  * referralsCount tracks all attributed orders.
  */
-export async function recomputeAffiliateRollups(affiliateId: string): Promise<void> {
-  const affiliate = await db.query.affiliates.findFirst({ where: eq(affiliates.id, affiliateId) })
-  if (!affiliate) return
-  const rows = await db.select().from(orders).where(eq(orders.affiliateId, affiliateId))
+export async function recomputeCoachRollups(coachId: string): Promise<void> {
+  const coach = await db.query.coaches.findFirst({ where: eq(coaches.id, coachId) })
+  if (!coach) return
+  const rows = await db.select().from(orders).where(eq(orders.sourceCoachId, coachId))
   const paid = rows.filter((o) => o.paymentStatus === 'paid')
   const revenueCents = paid.reduce((s, o) => s + o.priceCents, 0)
   const commissionTotal = paid.reduce((s, o) => s + o.commissionCents, 0)
 
   await db
-    .update(affiliates)
+    .update(coaches)
     .set({
       referralsCount: rows.length,
       closedSalesCount: paid.length,
       revenueCents,
-      commissionOwedCents: Math.max(0, commissionTotal - affiliate.commissionPaidCents),
+      commissionOwedCents: Math.max(0, commissionTotal - coach.commissionPaidCents),
     })
-    .where(eq(affiliates.id, affiliateId))
+    .where(eq(coaches.id, coachId))
 }
 
 /** Convenience — recompute both rollups touched by an order. */
@@ -178,7 +178,7 @@ export async function recomputeOrderRollups(orderId: string): Promise<void> {
   const order = await db.query.orders.findFirst({ where: eq(orders.id, orderId) })
   if (!order) return
   await recomputeCustomerRollups(order.customerId)
-  if (order.affiliateId) await recomputeAffiliateRollups(order.affiliateId)
+  if (order.sourceCoachId) await recomputeCoachRollups(order.sourceCoachId)
 }
 
 /**

@@ -7,6 +7,7 @@ import {
   boolean,
   numeric,
   timestamp,
+  date,
   uuid,
   unique,
 } from 'drizzle-orm/pg-core'
@@ -17,9 +18,11 @@ import {
 
 export const leadStatus = pgEnum('lead_status', [
   'new_lead',
-  'qualified',
-  'payment_pending',
-  'won',
+  'contacted',
+  'ticket_opened',
+  'interested',
+  'invoice_sent',
+  'paid',
   'lost',
 ])
 
@@ -97,6 +100,19 @@ export const ticketType = pgEnum('ticket_type', ['purchase', 'support', 'questio
 
 export const riskStatus = pgEnum('risk_status', ['good', 'watch', 'high_risk', 'blocked'])
 
+// --- v2 coach/affiliate enums ---
+export const coachTier = pgEnum('coach_tier', ['bronze', 'silver', 'gold'])
+export const coachStatus = pgEnum('coach_status', ['active', 'paused', 'banned'])
+// Commission state machine (7-day hold-and-approve).
+export const commissionStatus = pgEnum('commission_status', [
+  'not_eligible',
+  'pending',
+  'approved',
+  'paid',
+  'cancelled',
+])
+export const payoutStatus = pgEnum('payout_status', ['pending', 'paid'])
+
 // ---------------------------------------------------------------------------
 // Shared column helpers
 // ---------------------------------------------------------------------------
@@ -109,11 +125,11 @@ const updatedAt = () =>
     .$onUpdate(() => new Date())
 
 // ---------------------------------------------------------------------------
-// reps — synced from Clerk. No custom auth table; `id` IS the Clerk user id.
+// reps — local admin/rep accounts. `id` is a stable string (Clerk removed).
 // ---------------------------------------------------------------------------
 
 export const reps = pgTable('reps', {
-  id: text('id').primaryKey(), // clerk user id
+  id: text('id').primaryKey(),
   displayName: text('display_name'),
   email: text('email'),
   // 'admin' | 'rep'. admin sees payouts + profit, rep does not.
@@ -122,17 +138,31 @@ export const reps = pgTable('reps', {
 })
 
 // ---------------------------------------------------------------------------
-// affiliates — declared before orders (orders references it).
+// coaches — affiliate/coach partners (evolved from the old `affiliates` table).
+// Declared before orders (orders references it). Rollup counters are persisted.
 // ---------------------------------------------------------------------------
 
-export const affiliates = pgTable('affiliates', {
+export const coaches = pgTable('coaches', {
   id: uuid('id').primaryKey().defaultRandom(),
   name: text('name').notNull(),
   discordUsername: text('discord_username'),
-  // Referral / discount code buyers cite (e.g. "AA10"). Unique so codes map 1:1.
-  referralCode: text('referral_code').unique(),
-  // TODO(sharjeel): confirm rate. numeric returns as a string; see lib/money.ts.
+  // Handle used for role names + the coach dashboard (e.g. "ishhy-printss").
+  coachCode: text('coach_code').unique(),
+  // Promo / discount code buyers cite (e.g. "ISHHY100"). Unique so codes map 1:1.
+  promoCode: text('promo_code').unique(),
+  trackingLink: text('tracking_link'),
+  discordInviteLink: text('discord_invite_link'),
+  leadRole: text('lead_role'),
+  partnerRole: text('partner_role'),
+  // Percent-mode rate. numeric returns as a string; see lib/money.ts.
+  // TODO(sharjeel): confirm rate + whether commission comes off gross or profit.
   commissionRate: numeric('commission_rate', { precision: 5, scale: 4 }).notNull().default('0.10'),
+  tier: coachTier('tier').notNull().default('bronze'),
+  payoutMethod: text('payout_method'),
+  status: coachStatus('status').notNull().default('active'),
+  // HMAC of the coach's login code, never the code itself. See lib/session.ts.
+  loginCodeHash: text('login_code_hash'),
+  // Persisted rollups (recomputed on order/commission mutations).
   referralsCount: integer('referrals_count').notNull().default(0),
   closedSalesCount: integer('closed_sales_count').notNull().default(0),
   revenueCents: integer('revenue_cents').notNull().default(0),
@@ -172,11 +202,14 @@ export const leads = pgTable('leads', {
   id: uuid('id').primaryKey().defaultRandom(),
   discordUsername: text('discord_username').notNull(),
   ticketLink: text('ticket_link'),
-  discordChannelId: text('discord_channel_id'), // filled by bot in phase 2
+  discordChannelId: text('discord_channel_id'), // filled by the poll cron
   source: leadSource('source').notNull().default('discord'),
   ticketType: ticketType('ticket_type'), // purchase | support | question — for tabs
   email: text('email'), // buyer email — matches Stripe charge billing email
-  referralCode: text('referral_code'), // code the buyer cited; maps to an affiliate
+  referralCode: text('referral_code'), // raw code the buyer cited (attribution signal)
+  // Resolved attribution (set at ingest when the code matches a coach's promo code).
+  sourceCoachId: uuid('source_coach_id').references(() => coaches.id),
+  promoCodeUsed: text('promo_code_used'), // the matched promo code, snapshot
   interest: text('interest'),
   budgetCents: integer('budget_cents'),
   status: leadStatus('status').notNull().default('new_lead'),
@@ -198,7 +231,9 @@ export const orders = pgTable('orders', {
   customerId: uuid('customer_id')
     .notNull()
     .references(() => customers.id),
-  affiliateId: uuid('affiliate_id').references(() => affiliates.id), // nullable
+  // Locked attribution — copied from the lead at paid time, authoritative for credit.
+  sourceCoachId: uuid('source_coach_id').references(() => coaches.id), // nullable
+  promoCodeUsed: text('promo_code_used'), // snapshot of the code that earned credit
   package: text('package').notNull(),
   priceCents: integer('price_cents').notNull(),
   supplierPayoutCents: integer('supplier_payout_cents').notNull(),
@@ -209,7 +244,7 @@ export const orders = pgTable('orders', {
   paymentMethod: paymentMethod('payment_method'),
   paymentLink: text('payment_link'),
   paymentStatus: paymentStatus('payment_status').notNull().default('pending'),
-  transactionId: text('transaction_id'),
+  transactionId: text('transaction_id'), // Stripe charge id when recorded
   paidAt: timestamp('paid_at', { withTimezone: true }),
   deliveryStatus: deliveryStatus('delivery_status').notNull().default('not_started'),
   deliveredAt: timestamp('delivered_at', { withTimezone: true }),
@@ -220,6 +255,77 @@ export const orders = pgTable('orders', {
   warrantyStart: timestamp('warranty_start', { withTimezone: true }),
   warrantyEnd: timestamp('warranty_end', { withTimezone: true }),
   status: orderStatus('status').notNull().default('paid'),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+})
+
+// ---------------------------------------------------------------------------
+// payouts — a 7-day batch of a coach's approved commissions. Declared before
+// commissions (commissions references payouts).
+// ---------------------------------------------------------------------------
+
+export const payouts = pgTable('payouts', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  coachId: uuid('coach_id')
+    .notNull()
+    .references(() => coaches.id),
+  periodStart: date('period_start'),
+  periodEnd: date('period_end'),
+  buyerCount: integer('buyer_count').notNull().default(0),
+  totalCents: integer('total_cents').notNull().default(0),
+  status: payoutStatus('status').notNull().default('pending'),
+  paidAt: timestamp('paid_at', { withTimezone: true }),
+  method: text('method'),
+  transactionRef: text('transaction_ref'), // id or proof url
+  notes: text('notes'),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+})
+
+// ---------------------------------------------------------------------------
+// commissions — one row per attributed sale. This is the state machine.
+// ---------------------------------------------------------------------------
+
+export const commissions = pgTable('commissions', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  orderId: uuid('order_id')
+    .notNull()
+    .unique()
+    .references(() => orders.id),
+  coachId: uuid('coach_id')
+    .notNull()
+    .references(() => coaches.id),
+  // Provisional at pending; frozen at approval.
+  amountCents: integer('amount_cents').notNull().default(0),
+  status: commissionStatus('status').notNull().default('pending'),
+  eligibleAt: timestamp('eligible_at', { withTimezone: true }), // = order.paidAt + 7d
+  approvedAt: timestamp('approved_at', { withTimezone: true }),
+  paidAt: timestamp('paid_at', { withTimezone: true }),
+  cancelledAt: timestamp('cancelled_at', { withTimezone: true }),
+  cancelReason: text('cancel_reason'), // 'refund' | 'chargeback'
+  tierAtApproval: coachTier('tier_at_approval'), // snapshot
+  payoutId: uuid('payout_id').references(() => payouts.id),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+})
+
+// ---------------------------------------------------------------------------
+// coach_content — per-coach content tracking (mostly manual entry).
+// ---------------------------------------------------------------------------
+
+export const coachContent = pgTable('coach_content', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  coachId: uuid('coach_id')
+    .notNull()
+    .references(() => coaches.id),
+  videoLink: text('video_link'),
+  views: integer('views').notNull().default(0),
+  comments: integer('comments').notNull().default(0),
+  dms: integer('dms').notNull().default(0),
+  leadsGenerated: integer('leads_generated').notNull().default(0),
+  ticketsOpened: integer('tickets_opened').notNull().default(0),
+  buyers: integer('buyers').notNull().default(0),
+  revenueCents: integer('revenue_cents').notNull().default(0),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
 })
@@ -272,6 +378,7 @@ export const repsRelations = relations(reps, ({ many }) => ({
 
 export const leadsRelations = relations(leads, ({ one, many }) => ({
   assignedRep: one(reps, { fields: [leads.assignedRepId], references: [reps.id] }),
+  sourceCoach: one(coaches, { fields: [leads.sourceCoachId], references: [coaches.id] }),
   orders: many(orders),
   tasks: many(tasks),
 }))
@@ -280,16 +387,35 @@ export const customersRelations = relations(customers, ({ many }) => ({
   orders: many(orders),
 }))
 
-export const affiliatesRelations = relations(affiliates, ({ many }) => ({
+export const coachesRelations = relations(coaches, ({ many }) => ({
   orders: many(orders),
+  commissions: many(commissions),
+  payouts: many(payouts),
+  content: many(coachContent),
 }))
 
 export const ordersRelations = relations(orders, ({ one, many }) => ({
   lead: one(leads, { fields: [orders.leadId], references: [leads.id] }),
   customer: one(customers, { fields: [orders.customerId], references: [customers.id] }),
-  affiliate: one(affiliates, { fields: [orders.affiliateId], references: [affiliates.id] }),
+  sourceCoach: one(coaches, { fields: [orders.sourceCoachId], references: [coaches.id] }),
+  commission: one(commissions, { fields: [orders.id], references: [commissions.orderId] }),
   issues: many(issues),
   tasks: many(tasks),
+}))
+
+export const commissionsRelations = relations(commissions, ({ one }) => ({
+  order: one(orders, { fields: [commissions.orderId], references: [orders.id] }),
+  coach: one(coaches, { fields: [commissions.coachId], references: [coaches.id] }),
+  payout: one(payouts, { fields: [commissions.payoutId], references: [payouts.id] }),
+}))
+
+export const payoutsRelations = relations(payouts, ({ one, many }) => ({
+  coach: one(coaches, { fields: [payouts.coachId], references: [coaches.id] }),
+  commissions: many(commissions),
+}))
+
+export const coachContentRelations = relations(coachContent, ({ one }) => ({
+  coach: one(coaches, { fields: [coachContent.coachId], references: [coaches.id] }),
 }))
 
 export const issuesRelations = relations(issues, ({ one }) => ({
@@ -313,6 +439,12 @@ export type Customer = typeof customers.$inferSelect
 export type Order = typeof orders.$inferSelect
 export type NewOrder = typeof orders.$inferInsert
 export type Issue = typeof issues.$inferSelect
-export type Affiliate = typeof affiliates.$inferSelect
+export type Coach = typeof coaches.$inferSelect
+export type NewCoach = typeof coaches.$inferInsert
+export type Commission = typeof commissions.$inferSelect
+export type NewCommission = typeof commissions.$inferInsert
+export type Payout = typeof payouts.$inferSelect
+export type NewPayout = typeof payouts.$inferInsert
+export type CoachContent = typeof coachContent.$inferSelect
 export type Task = typeof tasks.$inferSelect
 export type NewTask = typeof tasks.$inferInsert

@@ -1,9 +1,10 @@
 /**
  * Seed script: realistic sample data so the dashboard and tables have something
- * to render before the app is live. Run with `npm run db:seed`.
+ * to render. Run with `npm run db:seed`.
  *
- * Idempotent: wipes all sample rows first (and any rep whose id starts with
- * `seed_`), then re-inserts. Real Clerk-synced reps are left untouched.
+ * DESTRUCTIVE: wipes every non-rep table before re-inserting. Intended for a
+ * FRESH or dev database only. Do NOT run against production — the live DB keeps
+ * its real Discord tickets and coaches (see HANDOFF.md / v2 migration notes).
  *
  * Money and warranty dates are computed the same way the app computes them on
  * write (lib/money.ts), so seeded rows are internally consistent.
@@ -16,27 +17,33 @@ import { like, eq } from 'drizzle-orm'
 import { db } from './index'
 import {
   reps,
-  affiliates,
+  coaches,
   customers,
   leads,
   orders,
+  commissions,
+  payouts,
+  coachContent,
   issues,
   tasks,
 } from './schema'
-import { computeOrderMoney } from '../money'
+import { computeOrderMoney, commissionForSale, type CoachTier } from '../money'
 
 const DAY = 86_400_000
 const now = Date.now()
 const daysFromNow = (n: number) => new Date(now + n * DAY)
 
 async function wipe() {
-  // FK-safe order.
+  // FK-safe order (children before parents).
   await db.delete(tasks)
   await db.delete(issues)
+  await db.delete(commissions)
   await db.delete(orders)
+  await db.delete(coachContent)
+  await db.delete(payouts)
   await db.delete(leads)
   await db.delete(customers)
-  await db.delete(affiliates)
+  await db.delete(coaches)
   await db.delete(reps).where(like(reps.id, 'seed_%'))
 }
 
@@ -53,51 +60,77 @@ async function main() {
     ])
     .returning()
 
-  // --- affiliates -----------------------------------------------------------
+  // --- coaches --------------------------------------------------------------
   const [alpha, beta] = await db
-    .insert(affiliates)
+    .insert(coaches)
     .values([
-      { name: 'Affiliate Alpha', discordUsername: 'alpha_promos', commissionRate: '0.10', commissionPaidCents: 0, notes: 'Runs a TikTok growth Discord.' },
-      { name: 'Affiliate Beta', discordUsername: 'beta_deals', commissionRate: '0.15', commissionPaidCents: 5000, notes: 'Higher rate, negotiated.' },
+      {
+        name: 'Ishhy Prints',
+        coachCode: 'ishhy-printss',
+        promoCode: 'ISHHY100',
+        discordUsername: 'ishhy',
+        commissionRate: '0.10',
+        tier: 'silver',
+        payoutMethod: 'paypal',
+        commissionPaidCents: 0,
+        notes: 'Runs a TikTok growth Discord.',
+      },
+      {
+        name: 'Titan Deals',
+        coachCode: 'titan-deals',
+        promoCode: 'TITAN15',
+        discordUsername: 'titan',
+        commissionRate: '0.15',
+        tier: 'gold',
+        payoutMethod: 'zelle',
+        commissionPaidCents: 5000,
+        notes: 'Higher rate, negotiated.',
+      },
     ])
     .returning()
 
+  const coachRate = (c: typeof alpha) => ({ tier: c.tier as CoachTier, commissionRate: c.commissionRate })
+
   // --- order blueprints (customer-keyed) ------------------------------------
-  // Each blueprint expands into a real order once its customer row exists.
+  type CommissionState = 'pending' | 'approved' | 'paid' | 'cancelled' | 'not_eligible'
   type Blueprint = {
     discordUsername: string
     displayName: string
     riskStatus?: 'good' | 'watch' | 'high_risk' | 'blocked'
     package: string
     priceCents: number
-    affiliate?: { id: string; commissionRate: string } | null
+    coach?: typeof alpha | null
     paymentStatus: 'paid' | 'refunded' | 'chargeback'
     status: 'paid' | 'awaiting_delivery' | 'delivered' | 'closed' | 'refunded' | 'chargeback'
     paymentMethod: 'paypal' | 'crypto' | 'zelle' | 'cashapp' | 'card' | 'other'
     paidDaysAgo: number
-    // delivery timing (only for delivered/closed)
     deliveredDaysAgo?: number
     warrantyDays?: number
     buyerConfirmed?: boolean
     proof?: boolean
+    // Commission ledger state to seed for this order (only when it has a coach).
+    commission?: CommissionState
+    cancelReason?: 'refund' | 'chargeback'
   }
 
   const blueprints: Blueprint[] = [
-    // buyer_ace — repeat customer, 2 orders
-    { discordUsername: 'buyer_ace', displayName: 'Ace', package: 'Starter Shop', priceCents: 25000, affiliate: alpha, paymentStatus: 'paid', status: 'delivered', paymentMethod: 'paypal', paidDaysAgo: 12, deliveredDaysAgo: 10, warrantyDays: 30, buyerConfirmed: true, proof: true }, // active warranty (ends +20d)
-    { discordUsername: 'buyer_ace', displayName: 'Ace', package: 'Growth Shop', priceCents: 45000, affiliate: null, paymentStatus: 'paid', status: 'closed', paymentMethod: 'crypto', paidDaysAgo: 65, deliveredDaysAgo: 60, warrantyDays: 30, buyerConfirmed: true, proof: true }, // warranty long expired, closed
-    // buyer_neo — expiring warranty
-    { discordUsername: 'buyer_neo', displayName: 'Neo', package: 'Starter Shop', priceCents: 25000, affiliate: beta, paymentStatus: 'paid', status: 'delivered', paymentMethod: 'zelle', paidDaysAgo: 27, deliveredDaysAgo: 25, warrantyDays: 30, buyerConfirmed: true, proof: true }, // ends +5d (expiring)
-    // buyer_trinity — awaiting delivery
-    { discordUsername: 'buyer_trinity', displayName: 'Trinity', riskStatus: 'watch', package: 'Premium Shop', priceCents: 80000, affiliate: null, paymentStatus: 'paid', status: 'awaiting_delivery', paymentMethod: 'card', paidDaysAgo: 1 },
-    // buyer_morpheus — just paid, not started
-    { discordUsername: 'buyer_morpheus', displayName: 'Morpheus', package: 'Growth Shop', priceCents: 45000, affiliate: alpha, paymentStatus: 'paid', status: 'paid', paymentMethod: 'cashapp', paidDaysAgo: 0 },
-    // buyer_switch — delivered but warranty expired (still status delivered)
-    { discordUsername: 'buyer_switch', displayName: 'Switch', package: 'Starter Shop', priceCents: 25000, affiliate: null, paymentStatus: 'paid', status: 'delivered', paymentMethod: 'paypal', paidDaysAgo: 47, deliveredDaysAgo: 45, warrantyDays: 30, buyerConfirmed: false, proof: true }, // ended 15d ago
-    // buyer_cypher — refunded
-    { discordUsername: 'buyer_cypher', displayName: 'Cypher', riskStatus: 'high_risk', package: 'Premium Shop', priceCents: 80000, affiliate: null, paymentStatus: 'refunded', status: 'refunded', paymentMethod: 'paypal', paidDaysAgo: 8 },
-    // buyer_dozer — chargeback
-    { discordUsername: 'buyer_dozer', displayName: 'Dozer', riskStatus: 'blocked', package: 'Growth Shop', priceCents: 45000, affiliate: beta, paymentStatus: 'chargeback', status: 'chargeback', paymentMethod: 'card', paidDaysAgo: 20 },
+    // buyer_ace — repeat customer, 2 orders. First earns an APPROVED commission.
+    { discordUsername: 'buyer_ace', displayName: 'Ace', package: 'Starter Shop', priceCents: 25000, coach: alpha, paymentStatus: 'paid', status: 'delivered', paymentMethod: 'paypal', paidDaysAgo: 12, deliveredDaysAgo: 10, warrantyDays: 30, buyerConfirmed: true, proof: true, commission: 'approved' },
+    { discordUsername: 'buyer_ace', displayName: 'Ace', package: 'Growth Shop', priceCents: 45000, coach: null, paymentStatus: 'paid', status: 'closed', paymentMethod: 'crypto', paidDaysAgo: 65, deliveredDaysAgo: 60, warrantyDays: 30, buyerConfirmed: true, proof: true },
+    // buyer_neo — PAID commission (already in a payout batch).
+    { discordUsername: 'buyer_neo', displayName: 'Neo', package: 'Starter Shop', priceCents: 25000, coach: beta, paymentStatus: 'paid', status: 'delivered', paymentMethod: 'zelle', paidDaysAgo: 27, deliveredDaysAgo: 25, warrantyDays: 30, buyerConfirmed: true, proof: true, commission: 'paid' },
+    // buyer_trinity — awaiting delivery, no coach.
+    { discordUsername: 'buyer_trinity', displayName: 'Trinity', riskStatus: 'watch', package: 'Premium Shop', priceCents: 80000, coach: null, paymentStatus: 'paid', status: 'awaiting_delivery', paymentMethod: 'card', paidDaysAgo: 1 },
+    // buyer_morpheus — just paid, PENDING commission (inside the 7-day hold).
+    { discordUsername: 'buyer_morpheus', displayName: 'Morpheus', package: 'Growth Shop', priceCents: 45000, coach: alpha, paymentStatus: 'paid', status: 'paid', paymentMethod: 'cashapp', paidDaysAgo: 2, commission: 'pending' },
+    // buyer_switch — delivered, warranty expired, no coach.
+    { discordUsername: 'buyer_switch', displayName: 'Switch', package: 'Starter Shop', priceCents: 25000, coach: null, paymentStatus: 'paid', status: 'delivered', paymentMethod: 'paypal', paidDaysAgo: 47, deliveredDaysAgo: 45, warrantyDays: 30, buyerConfirmed: false, proof: true },
+    // buyer_cypher — refunded → CANCELLED commission (reason refund).
+    { discordUsername: 'buyer_cypher', displayName: 'Cypher', riskStatus: 'high_risk', package: 'Premium Shop', priceCents: 80000, coach: alpha, paymentStatus: 'refunded', status: 'refunded', paymentMethod: 'paypal', paidDaysAgo: 8, commission: 'cancelled', cancelReason: 'refund' },
+    // buyer_dozer — chargeback → CANCELLED commission (reason chargeback).
+    { discordUsername: 'buyer_dozer', displayName: 'Dozer', riskStatus: 'blocked', package: 'Growth Shop', priceCents: 45000, coach: beta, paymentStatus: 'chargeback', status: 'chargeback', paymentMethod: 'card', paidDaysAgo: 20, commission: 'cancelled', cancelReason: 'chargeback' },
+    // buyer_link — paid but flagged NOT_ELIGIBLE (e.g. self-referral under review).
+    { discordUsername: 'buyer_link', displayName: 'Link', package: 'Starter Shop', priceCents: 25000, coach: beta, paymentStatus: 'paid', status: 'paid', paymentMethod: 'paypal', paidDaysAgo: 3, commission: 'not_eligible' },
   ]
 
   // --- customers (unique by discordUsername), rollups from their blueprints --
@@ -113,9 +146,7 @@ async function main() {
     const paid = bps.filter((b) => b.paymentStatus === 'paid')
     const totalSpentCents = paid.reduce((s, b) => s + b.priceCents, 0)
     const lastPurchaseAt =
-      paid.length > 0
-        ? daysFromNow(-Math.min(...paid.map((b) => b.paidDaysAgo)))
-        : null
+      paid.length > 0 ? daysFromNow(-Math.min(...paid.map((b) => b.paidDaysAgo))) : null
     const [row] = await db
       .insert(customers)
       .values({
@@ -131,18 +162,18 @@ async function main() {
     customerIdByUsername.set(username, row.id)
   }
 
-  // --- leads (10 across every status) ---------------------------------------
+  // --- leads (across every status) ------------------------------------------
   const insertedLeads = await db
     .insert(leads)
     .values([
       { discordUsername: 'lead_ghost', source: 'discord', interest: 'Starter Shop', budgetCents: 20000, status: 'new_lead', assignedRepId: rep.id, lastContactAt: daysFromNow(-1) },
-      { discordUsername: 'lead_raven', source: 'tiktok', interest: 'Growth Shop', budgetCents: 40000, status: 'new_lead', assignedRepId: rep.id },
-      { discordUsername: 'lead_kilo', source: 'referral', interest: 'Premium Shop', budgetCents: 75000, status: 'qualified', assignedRepId: rep.id, lastContactAt: daysFromNow(-2) },
-      { discordUsername: 'lead_juno', source: 'discord', interest: 'Starter Shop', budgetCents: 25000, status: 'qualified', assignedRepId: admin.id },
-      { discordUsername: 'lead_vega', source: 'affiliate', interest: 'Growth Shop', budgetCents: 45000, status: 'payment_pending', assignedRepId: rep.id, nextFollowUpAt: daysFromNow(1) },
-      { discordUsername: 'lead_orion', source: 'discord', interest: 'Premium Shop', budgetCents: 80000, status: 'payment_pending', assignedRepId: rep.id, nextFollowUpAt: daysFromNow(1) },
-      { discordUsername: 'buyer_ace', source: 'discord', interest: 'Starter Shop', budgetCents: 25000, status: 'won', assignedRepId: rep.id, lastContactAt: daysFromNow(-12) },
-      { discordUsername: 'buyer_neo', source: 'affiliate', interest: 'Starter Shop', budgetCents: 25000, status: 'won', assignedRepId: admin.id, lastContactAt: daysFromNow(-27) },
+      { discordUsername: 'lead_raven', source: 'tiktok', interest: 'Growth Shop', budgetCents: 40000, status: 'contacted', assignedRepId: rep.id },
+      { discordUsername: 'lead_kilo', source: 'referral', interest: 'Premium Shop', budgetCents: 75000, status: 'ticket_opened', assignedRepId: rep.id, lastContactAt: daysFromNow(-2) },
+      { discordUsername: 'lead_juno', source: 'discord', interest: 'Starter Shop', budgetCents: 25000, status: 'interested', assignedRepId: admin.id },
+      { discordUsername: 'lead_vega', source: 'affiliate', interest: 'Growth Shop', budgetCents: 45000, status: 'invoice_sent', referralCode: 'ISHHY100', sourceCoachId: alpha.id, promoCodeUsed: 'ISHHY100', assignedRepId: rep.id, nextFollowUpAt: daysFromNow(1) },
+      { discordUsername: 'lead_orion', source: 'discord', interest: 'Premium Shop', budgetCents: 80000, status: 'invoice_sent', assignedRepId: rep.id, nextFollowUpAt: daysFromNow(1) },
+      { discordUsername: 'buyer_ace', source: 'discord', interest: 'Starter Shop', budgetCents: 25000, status: 'paid', assignedRepId: rep.id, lastContactAt: daysFromNow(-12) },
+      { discordUsername: 'buyer_neo', source: 'affiliate', interest: 'Starter Shop', budgetCents: 25000, status: 'paid', referralCode: 'TITAN15', sourceCoachId: beta.id, promoCodeUsed: 'TITAN15', assignedRepId: admin.id, lastContactAt: daysFromNow(-27) },
       { discordUsername: 'lead_atlas', source: 'repeat', interest: 'Growth Shop', budgetCents: 45000, status: 'lost', assignedRepId: rep.id, notes: 'Went with a competitor.' },
       { discordUsername: 'lead_nova', source: 'other', interest: 'Premium Shop', budgetCents: 90000, status: 'lost', assignedRepId: admin.id, notes: 'Budget fell through.' },
     ])
@@ -150,15 +181,28 @@ async function main() {
 
   const leadByUsername = new Map(insertedLeads.map((l) => [l.discordUsername, l]))
 
-  // --- orders (expand blueprints) -------------------------------------------
-  const affiliateTotals = new Map<string, { sales: number; revenue: number; commission: number }>()
+  // --- orders (expand blueprints) + commissions -----------------------------
   const insertedOrders = []
 
-  for (const b of blueprints) {
-    const money = computeOrderMoney({
-      priceCents: b.priceCents,
-      commissionRate: b.affiliate?.commissionRate ?? null,
+  // One payout batch for Titan (beta) to hold the already-paid commission.
+  const [titanPayout] = await db
+    .insert(payouts)
+    .values({
+      coachId: beta.id,
+      periodStart: daysFromNow(-28).toISOString().slice(0, 10),
+      periodEnd: daysFromNow(-21).toISOString().slice(0, 10),
+      buyerCount: 1,
+      totalCents: 0, // set after we know the commission amount
+      status: 'paid',
+      paidAt: daysFromNow(-20),
+      method: 'zelle',
+      transactionRef: 'seed_payout_titan',
     })
+    .returning()
+
+  for (const b of blueprints) {
+    const commissionCents = commissionForSale(b.priceCents, b.coach ? coachRate(b.coach) : null)
+    const money = computeOrderMoney({ priceCents: b.priceCents, commissionCents })
     const paidAt = daysFromNow(-b.paidDaysAgo)
     const delivered = b.deliveredDaysAgo != null
     const warrantyStart = delivered ? daysFromNow(-b.deliveredDaysAgo!) : null
@@ -170,7 +214,8 @@ async function main() {
       .values({
         leadId: leadByUsername.get(b.discordUsername)?.id ?? null,
         customerId: customerIdByUsername.get(b.discordUsername)!,
-        affiliateId: b.affiliate?.id ?? null,
+        sourceCoachId: b.coach?.id ?? null,
+        promoCodeUsed: b.coach?.promoCode ?? null,
         package: b.package,
         priceCents: b.priceCents,
         supplierPayoutCents: money.supplierPayoutCents,
@@ -181,7 +226,7 @@ async function main() {
         paymentMethod: b.paymentMethod,
         paymentStatus: b.paymentStatus,
         transactionId: `seed_txn_${Math.round(b.priceCents + b.paidDaysAgo)}`,
-        paidAt: b.paymentStatus === 'paid' ? paidAt : paidAt,
+        paidAt,
         deliveryStatus: delivered ? 'delivered' : b.status === 'awaiting_delivery' ? 'in_progress' : 'not_started',
         deliveredAt: warrantyStart,
         deliveryProofUrl: b.proof ? 'https://example.com/proof/seed.png' : null,
@@ -195,29 +240,57 @@ async function main() {
       .returning()
     insertedOrders.push(order)
 
-    // Affiliate rollups count paid orders only.
-    if (b.affiliate && b.paymentStatus === 'paid') {
-      const t = affiliateTotals.get(b.affiliate.id) ?? { sales: 0, revenue: 0, commission: 0 }
-      t.sales += 1
-      t.revenue += b.priceCents
-      t.commission += money.commissionCents
-      affiliateTotals.set(b.affiliate.id, t)
+    // Commission ledger row (only for attributed orders with a state hint).
+    if (b.coach && b.commission) {
+      const eligibleAt = new Date(paidAt.getTime() + 7 * DAY)
+      const st = b.commission
+      await db.insert(commissions).values({
+        orderId: order.id,
+        coachId: b.coach.id,
+        amountCents: commissionCents,
+        status: st,
+        eligibleAt,
+        approvedAt: st === 'approved' || st === 'paid' ? eligibleAt : null,
+        tierAtApproval: st === 'approved' || st === 'paid' ? (b.coach.tier as CoachTier) : null,
+        paidAt: st === 'paid' ? daysFromNow(-20) : null,
+        payoutId: st === 'paid' ? titanPayout.id : null,
+        cancelledAt: st === 'cancelled' ? daysFromNow(-1) : null,
+        cancelReason: st === 'cancelled' ? (b.cancelReason ?? 'refund') : null,
+      })
+      if (st === 'paid') {
+        await db.update(payouts).set({ totalCents: commissionCents }).where(eq(payouts.id, titanPayout.id))
+      }
     }
   }
 
-  // --- affiliate rollups ----------------------------------------------------
-  for (const aff of [alpha, beta]) {
-    const t = affiliateTotals.get(aff.id) ?? { sales: 0, revenue: 0, commission: 0 }
+  // --- coach rollups (paid orders only, owed = commission - alreadyPaid) -----
+  for (const coach of [alpha, beta]) {
+    const coachOrders = insertedOrders.filter((o) => o.sourceCoachId === coach.id && o.paymentStatus === 'paid')
+    const revenue = coachOrders.reduce((s, o) => s + o.priceCents, 0)
+    const commission = coachOrders.reduce((s, o) => s + o.commissionCents, 0)
     await db
-      .update(affiliates)
+      .update(coaches)
       .set({
-        closedSalesCount: t.sales,
-        referralsCount: t.sales,
-        revenueCents: t.revenue,
-        commissionOwedCents: Math.max(0, t.commission - aff.commissionPaidCents),
+        closedSalesCount: coachOrders.length,
+        referralsCount: coachOrders.length,
+        revenueCents: revenue,
+        commissionOwedCents: Math.max(0, commission - coach.commissionPaidCents),
       })
-      .where(eq(affiliates.id, aff.id))
+      .where(eq(coaches.id, coach.id))
   }
+
+  // --- coach content (one sample row) ---------------------------------------
+  await db.insert(coachContent).values({
+    coachId: alpha.id,
+    videoLink: 'https://tiktok.com/@ishhy/video/seed',
+    views: 48200,
+    comments: 310,
+    dms: 87,
+    leadsGenerated: 24,
+    ticketsOpened: 11,
+    buyers: 4,
+    revenueCents: 120000,
+  })
 
   // --- issues (one open, one resolved) --------------------------------------
   const aceDelivered = insertedOrders[0] // buyer_ace active-warranty order
@@ -256,8 +329,8 @@ async function main() {
   ])
 
   console.log(
-    `Seeded: 2 reps, 2 affiliates, ${customerIdByUsername.size} customers, ` +
-      `${insertedLeads.length} leads, ${insertedOrders.length} orders, 2 issues, 5 tasks.`
+    `Seeded: 2 reps, 2 coaches, ${customerIdByUsername.size} customers, ` +
+      `${insertedLeads.length} leads, ${insertedOrders.length} orders, commissions across all states, 1 payout, 2 issues, 5 tasks.`
   )
 }
 

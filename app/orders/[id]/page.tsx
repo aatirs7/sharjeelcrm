@@ -4,7 +4,7 @@ import { desc, eq } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { orders, issues } from '@/lib/db/schema'
 import { isAdmin } from '@/lib/auth'
-import { formatCents, SUPPLIER_PCT, SERVICE_PCT, PROFIT_PCT } from '@/lib/money'
+import { formatCents, commissionExceedsProfit, SUPPLIER_PCT, SERVICE_PCT, PROFIT_PCT } from '@/lib/money'
 import { titleCase } from '@/lib/labels'
 import { warrantyState, daysUntil } from '@/lib/warranty'
 import { OrderStatusBadge, WarrantyBadge } from '@/components/status-badge'
@@ -34,7 +34,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
 
   const order = await db.query.orders.findFirst({
     where: eq(orders.id, id),
-    with: { customer: true, affiliate: true, lead: true },
+    with: { customer: true, sourceCoach: true, lead: true },
   })
   if (!order) notFound()
 
@@ -68,7 +68,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
             {order.customer?.discordUsername}
           </Link>
         </span>
-        {order.affiliate && <span>Affiliate: {order.affiliate.name}</span>}
+        {order.sourceCoach && <span>Coach: {order.sourceCoach.name}</span>}
         {order.lead && (
           <span>
             Origin ticket:{' '}
@@ -92,6 +92,11 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
               <Row label={`Profit (${PROFIT_PCT})`} value={formatCents(order.profitCents)} />
               <Row label="Commission" value={formatCents(order.commissionCents)} />
               <Row label="Net profit" value={formatCents(order.netProfitCents ?? 0)} />
+              {commissionExceedsProfit(order) && (
+                <p className="mt-2 rounded-md bg-rose-100 px-2 py-1.5 text-xs text-rose-800 dark:bg-rose-950 dark:text-rose-300">
+                  Commission exceeds profit — this sale nets negative.
+                </p>
+              )}
             </CardContent>
           </Card>
         )}

@@ -6,9 +6,11 @@ export function titleCase(value: string): string {
 /** Tailwind class sets for status pills, keyed by enum value. */
 export const LEAD_STATUS_CLASSES: Record<string, string> = {
   new_lead: 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300',
-  qualified: 'bg-violet-100 text-violet-800 dark:bg-violet-950 dark:text-violet-300',
-  payment_pending: 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300',
-  won: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300',
+  contacted: 'bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-300',
+  ticket_opened: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-950 dark:text-indigo-300',
+  interested: 'bg-violet-100 text-violet-800 dark:bg-violet-950 dark:text-violet-300',
+  invoice_sent: 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300',
+  paid: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300',
   lost: 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300',
 }
 

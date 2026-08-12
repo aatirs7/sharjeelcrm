@@ -13,15 +13,22 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 
-// `won` is reached only via Convert to order; offer the rest of the machine.
-const SELECTABLE = ['new_lead', 'qualified', 'payment_pending', 'lost'] as const
+// `paid` is reached only via Convert to order; offer the rest of the machine.
+const SELECTABLE = [
+  'new_lead',
+  'contacted',
+  'ticket_opened',
+  'interested',
+  'invoice_sent',
+  'lost',
+] as const
 
 export function LeadStatusChanger({ leadId, status }: { leadId: string; status: string }) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
 
-  if (status === 'won') {
-    return <p className="text-sm">Won</p>
+  if (status === 'paid') {
+    return <p className="text-sm">Paid</p>
   }
 
   function onChange(next: string | null) {
