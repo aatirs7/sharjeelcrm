@@ -2,7 +2,7 @@ name: Agent build
 
 # Triggered by Elysium Builds when the owner approves a client request.
 # Runs Claude headless to implement the change, then opens a pull request.
-# Does nothing on its own; it only runs when dispatched.
+# It only runs when dispatched.
 
 on:
   workflow_dispatch:
@@ -34,7 +34,6 @@ jobs:
       - name: Implement the change
         env:
           # Subscription auth (your Max plan), not a pay-per-token API key.
-          # Generate once with `claude setup-token` and store as this secret.
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           TASK: ${{ github.event.inputs.task }}
         run: |
@@ -42,18 +41,14 @@ jobs:
           BRANCH="agent/${{ github.run_id }}"
           git checkout -b "$BRANCH"
 
-          PROMPT="$TASK
-
-Constraints: work only in this repository. Do not start a dev server and do not deploy. Keep changes minimal and in the existing style. Open the image URLs above to see what the client means.
-
-When you are finished, write a file at PR_SUMMARY.md that explains, in plain non-technical English for the business owner, what you changed and what the client will now see on the site. No code, no file names, no jargon. A few short bullet points. Also add one line starting with 'Check:' telling them exactly what to look at on the preview to confirm it."
+          GUIDE="Constraints: work only in this repository, do not start a dev server or deploy, keep changes minimal and in the existing style, and open the image URLs above to see what the client means. When you are finished, write a file PR_SUMMARY.md that explains in plain non-technical English (for the business owner) what you changed and what the client will now see. No code, no file names, no jargon, a few short bullet points, plus one final line starting with 'Check:' saying what to look at on the preview to confirm it."
+          PROMPT=$(printf '%s\n\n%s' "$TASK" "$GUIDE")
 
           claude -p "$PROMPT" \
             --dangerously-skip-permissions \
             --allowedTools "Read,Edit,Write,Glob,Grep,Bash,WebFetch" \
             --max-turns 40 || true
 
-          # Lift the plain-English summary out, then keep it out of the commit.
           if [ -f PR_SUMMARY.md ]; then
             cp PR_SUMMARY.md /tmp/pr_summary.md
             rm -f PR_SUMMARY.md
@@ -81,15 +76,9 @@ When you are finished, write a file at PR_SUMMARY.md that explains, in plain non
 
           SUMMARY="Automated change from an approved request."
           [ -f /tmp/pr_summary.md ] && SUMMARY="$(cat /tmp/pr_summary.md)"
+          NOTE="See it before you merge: Vercel adds a live preview link to this PR shortly. Open it to view the change on the real site. Nothing goes live until you merge. Built automatically from an approved request (task ${{ github.event.inputs.task_id }})."
+          printf '%s\n\n---\n\n%s\n' "$SUMMARY" "$NOTE" > /tmp/pr_body.md
 
-          BODY="$SUMMARY
-
----
-**See it before you merge:** Vercel adds a live preview link to this PR in a minute or two. Open it to view the change on the real site. Nothing goes live until you merge.
-
-_Built automatically from an approved request (task ${{ github.event.inputs.task_id }})._"
-
-          printf '%s' "$BODY" > /tmp/pr_body.md
           gh pr create \
             --title "Requested changes for review" \
             --body-file /tmp/pr_body.md \
