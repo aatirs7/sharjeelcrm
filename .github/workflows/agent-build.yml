@@ -13,6 +13,9 @@ on:
       task_id:
         description: Elysium task id
         required: false
+      base:
+        description: Branch to build on and open the PR against (defaults to the repo default branch)
+        required: false
 
 permissions:
   contents: write
@@ -22,7 +25,18 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
+      - name: Work out the base branch
+        id: base
+        env:
+          IN_BASE: ${{ github.event.inputs.base }}
+          DEF_BASE: ${{ github.event.repository.default_branch }}
+        run: |
+          if [ -n "$IN_BASE" ]; then echo "ref=$IN_BASE" >> "$GITHUB_OUTPUT"; else echo "ref=$DEF_BASE" >> "$GITHUB_OUTPUT"; fi
+
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.base.outputs.ref }}
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
@@ -41,13 +55,13 @@ jobs:
           BRANCH="agent/${{ github.run_id }}"
           git checkout -b "$BRANCH"
 
-          GUIDE="Constraints: work only in this repository, do not start a dev server or deploy, keep changes minimal and in the existing style, and open the image URLs above to see what the client means. When you are finished, write a file PR_SUMMARY.md that explains in plain non-technical English (for the business owner) what you changed and what the client will now see. No code, no file names, no jargon, a few short bullet points, plus one final line starting with 'Check:' saying what to look at on the preview to confirm it."
+          GUIDE="The site code is already checked out in this folder and is the branch that is live, so work directly here. Implement every requested change above, one by one, in the existing style of the codebase. Open each screenshot URL once with WebFetch to see what the client means. Do not start a dev server and do not deploy. Be efficient: this is a real client site, so make each change carefully but keep moving so you finish all of them. When you are done, write a file PR_SUMMARY.md that explains in plain non-technical English (for the business owner) what you changed and what the client will now see. No code, no file names, no jargon: a few short bullet points, one per request, plus one final line starting with 'Check:' saying what to look at on the preview to confirm it."
           PROMPT=$(printf '%s\n\n%s' "$TASK" "$GUIDE")
 
           claude -p "$PROMPT" \
             --dangerously-skip-permissions \
             --allowedTools "Read,Edit,Write,Glob,Grep,Bash,WebFetch" \
-            --max-turns 40 || true
+            --max-turns 200 || true
 
           if [ -f PR_SUMMARY.md ]; then
             cp PR_SUMMARY.md /tmp/pr_summary.md
@@ -69,6 +83,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           BRANCH="agent/${{ github.run_id }}"
+          BASE="${{ steps.base.outputs.ref }}"
           if ! git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null 2>&1; then
             echo "No branch pushed, nothing to open."
             exit 0
@@ -83,4 +98,4 @@ jobs:
             --title "Requested changes for review" \
             --body-file /tmp/pr_body.md \
             --head "$BRANCH" \
-            --base "${{ github.event.repository.default_branch }}" || true
+            --base "$BASE" || true
