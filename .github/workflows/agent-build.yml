@@ -44,12 +44,20 @@ jobs:
 
           PROMPT="$TASK
 
-Constraints: work only in this repository. Do not start a dev server and do not deploy. Keep changes minimal and in the existing style. Open the image URLs above to see what the client means."
+Constraints: work only in this repository. Do not start a dev server and do not deploy. Keep changes minimal and in the existing style. Open the image URLs above to see what the client means.
+
+When you are finished, write a file at PR_SUMMARY.md that explains, in plain non-technical English for the business owner, what you changed and what the client will now see on the site. No code, no file names, no jargon. A few short bullet points. Also add one line starting with 'Check:' telling them exactly what to look at on the preview to confirm it."
 
           claude -p "$PROMPT" \
             --dangerously-skip-permissions \
             --allowedTools "Read,Edit,Write,Glob,Grep,Bash,WebFetch" \
             --max-turns 40 || true
+
+          # Lift the plain-English summary out, then keep it out of the commit.
+          if [ -f PR_SUMMARY.md ]; then
+            cp PR_SUMMARY.md /tmp/pr_summary.md
+            rm -f PR_SUMMARY.md
+          fi
 
           git config user.name "Elysium Agent"
           git config user.email "agent@elysiumbuilds.dev"
@@ -66,12 +74,24 @@ Constraints: work only in this repository. Do not start a dev server and do not 
           GH_TOKEN: ${{ github.token }}
         run: |
           BRANCH="agent/${{ github.run_id }}"
-          if git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null 2>&1; then
-            gh pr create \
-              --title "Agent: requested changes" \
-              --body "Automated build from an approved Elysium Builds request (task ${{ github.event.inputs.task_id }}). Review and merge to ship." \
-              --head "$BRANCH" \
-              --base "${{ github.event.repository.default_branch }}" || true
-          else
+          if ! git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null 2>&1; then
             echo "No branch pushed, nothing to open."
+            exit 0
           fi
+
+          SUMMARY="Automated change from an approved request."
+          [ -f /tmp/pr_summary.md ] && SUMMARY="$(cat /tmp/pr_summary.md)"
+
+          BODY="$SUMMARY
+
+---
+**See it before you merge:** Vercel adds a live preview link to this PR in a minute or two. Open it to view the change on the real site. Nothing goes live until you merge.
+
+_Built automatically from an approved request (task ${{ github.event.inputs.task_id }})._"
+
+          printf '%s' "$BODY" > /tmp/pr_body.md
+          gh pr create \
+            --title "Requested changes for review" \
+            --body-file /tmp/pr_body.md \
+            --head "$BRANCH" \
+            --base "${{ github.event.repository.default_branch }}" || true
