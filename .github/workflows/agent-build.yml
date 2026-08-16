@@ -1,8 +1,9 @@
 name: Agent build
 
-# Triggered by Elysium Builds when the owner approves a client request.
-# Runs Claude headless to implement the change, then opens a pull request.
-# It only runs when dispatched.
+# Triggered by Elysium Builds when the owner approves a client request, or asks
+# for a tweak on an open pull request. Runs Claude headless to make the change.
+# For a new request it opens a pull request; for a tweak it pushes more commits
+# to the request's existing branch. It only runs when dispatched.
 
 on:
   workflow_dispatch:
@@ -16,6 +17,9 @@ on:
       base:
         description: Branch to build on and open the PR against (defaults to the repo default branch)
         required: false
+      branch:
+        description: Existing PR branch to tweak (leave empty for a new request)
+        required: false
 
 permissions:
   contents: write
@@ -25,17 +29,29 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Work out the base branch
-        id: base
+      - name: Resolve refs
+        id: refs
         env:
           IN_BASE: ${{ github.event.inputs.base }}
+          IN_BRANCH: ${{ github.event.inputs.branch }}
           DEF_BASE: ${{ github.event.repository.default_branch }}
+          RUN_ID: ${{ github.run_id }}
         run: |
-          if [ -n "$IN_BASE" ]; then echo "ref=$IN_BASE" >> "$GITHUB_OUTPUT"; else echo "ref=$DEF_BASE" >> "$GITHUB_OUTPUT"; fi
+          BASE="${IN_BASE:-$DEF_BASE}"
+          if [ -n "$IN_BRANCH" ]; then
+            echo "work=$IN_BRANCH" >> "$GITHUB_OUTPUT"
+            echo "checkout=$IN_BRANCH" >> "$GITHUB_OUTPUT"
+            echo "tweak=yes" >> "$GITHUB_OUTPUT"
+          else
+            echo "work=agent/$RUN_ID" >> "$GITHUB_OUTPUT"
+            echo "checkout=$BASE" >> "$GITHUB_OUTPUT"
+            echo "tweak=no" >> "$GITHUB_OUTPUT"
+          fi
+          echo "base=$BASE" >> "$GITHUB_OUTPUT"
 
       - uses: actions/checkout@v4
         with:
-          ref: ${{ steps.base.outputs.ref }}
+          ref: ${{ steps.refs.outputs.checkout }}
           fetch-depth: 0
 
       - uses: actions/setup-node@v4
@@ -50,10 +66,15 @@ jobs:
           # Subscription auth (your Max plan), not a pay-per-token API key.
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           TASK: ${{ github.event.inputs.task }}
+          WORK: ${{ steps.refs.outputs.work }}
+          TWEAK: ${{ steps.refs.outputs.tweak }}
         run: |
           set -e
-          BRANCH="agent/${{ github.run_id }}"
-          git checkout -b "$BRANCH"
+          if [ "$TWEAK" = "yes" ]; then
+            git checkout "$WORK" 2>/dev/null || git checkout -B "$WORK"
+          else
+            git checkout -b "$WORK"
+          fi
 
           GUIDE="The site code is already checked out in this folder and is the branch that is live, so work directly here. Implement every requested change above, one by one, in the existing style of the codebase. Open each screenshot URL once with WebFetch to see what the client means. Do not start a dev server and do not deploy. Be efficient: this is a real client site, so make each change carefully but keep moving so you finish all of them. When you are done, write a file PR_SUMMARY.md that explains in plain non-technical English (for the business owner) what you changed and what the client will now see. No code, no file names, no jargon: a few short bullet points, one per request, plus one final line starting with 'Check:' saying what to look at on the preview to confirm it."
           PROMPT=$(printf '%s\n\n%s' "$TASK" "$GUIDE")
@@ -76,15 +97,16 @@ jobs:
             exit 0
           fi
           git commit -m "Agent: apply requested changes"
-          git push origin "$BRANCH"
+          git push origin "$WORK"
 
       - name: Open a pull request
+        if: steps.refs.outputs.tweak == 'no'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          BRANCH="agent/${{ github.run_id }}"
-          BASE="${{ steps.base.outputs.ref }}"
-          if ! git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null 2>&1; then
+          WORK="${{ steps.refs.outputs.work }}"
+          BASE="${{ steps.refs.outputs.base }}"
+          if ! git ls-remote --exit-code --heads origin "$WORK" >/dev/null 2>&1; then
             echo "No branch pushed, nothing to open."
             exit 0
           fi
@@ -97,5 +119,5 @@ jobs:
           gh pr create \
             --title "Requested changes for review" \
             --body-file /tmp/pr_body.md \
-            --head "$BRANCH" \
+            --head "$WORK" \
             --base "$BASE" || true
