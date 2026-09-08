@@ -80,6 +80,7 @@ jobs:
           PROMPT=$(printf '%s\n\n%s' "$TASK" "$GUIDE")
 
           claude -p "$PROMPT" \
+            --model claude-fable-5-1 \
             --dangerously-skip-permissions \
             --allowedTools "Read,Edit,Write,Glob,Grep,Bash,WebFetch" \
             --max-turns 200 || true
