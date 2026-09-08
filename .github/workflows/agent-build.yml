@@ -79,10 +79,12 @@ jobs:
           GUIDE="The site code is already checked out in this folder and is the branch that is live, so work directly here. Implement every requested change above, one by one, in the existing style of the codebase. Open each screenshot URL once with WebFetch to see what the client means. Do not start a dev server and do not deploy. IMPORTANT: do not run git yourself, do not commit, do not push, and do not open or edit any pull request. Only edit files. Committing your work and opening the pull request are done for you automatically after you finish, so if you open one it breaks that. Be efficient: this is a real client site, so make each change carefully but keep moving so you finish all of them. When you are done, write a file PR_SUMMARY.md: one dash bullet per change, and nothing else. Each bullet is ONE short, plain sentence a busy non-technical shop owner reads in two seconds, under about 18 words, saying what is different now in everyday language. No code, no file names, no jargon, no technical words, no intro line, no 'Check' line. Example of the tone: '- The Buy button at the top now says Buy now instead of Browse accounts.'"
           PROMPT=$(printf '%s\n\n%s' "$TASK" "$GUIDE")
 
+          # Full default toolset and no prompts, so it works the repo exactly as
+          # a trusted Claude Code session would: the whole repo is checked out,
+          # and it can read, search, edit, run commands, fetch, and search.
           claude -p "$PROMPT" \
             --model claude-fable-5-1 \
             --dangerously-skip-permissions \
-            --allowedTools "Read,Edit,Write,Glob,Grep,Bash,WebFetch" \
             --max-turns 200 || true
 
           if [ -f PR_SUMMARY.md ]; then
