@@ -8,6 +8,7 @@ import { postWeeklyLeaderboard, postDailyReport } from '@/lib/discord-posts'
 import { deleteStaleTicketChannels } from '@/lib/discord'
 import { scanFraud } from '@/lib/fraud'
 import { assignAchievements } from '@/lib/achievements'
+import { syncStripeOrders } from '@/lib/stripe-sync'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -32,6 +33,9 @@ async function handle(req: Request): Promise<NextResponse> {
   }
 
   const now = new Date()
+  // Keep the CRM's orders/customers in step with real Stripe charges first, so
+  // the rest of the sweep (commissions, rollups) sees the latest sales.
+  const stripeSync = await syncStripeOrders()
   const flaggedWarranties = await flagExpiringWarranties()
   const commissionSweep = await sweepCommissions()
   const tiersChanged = await assignMonthlyTiers()
@@ -65,6 +69,8 @@ async function handle(req: Request): Promise<NextResponse> {
   return NextResponse.json({
     ok: true,
     ranAt: now.toISOString(),
+    stripeOrdersCreated: stripeSync.created,
+    stripeOrdersUpdated: stripeSync.updated,
     flaggedWarranties,
     expiredWarranties: expiredRow[0]?.n ?? 0,
     overdueTasks: overdueRow[0]?.n ?? 0,

@@ -218,6 +218,7 @@ export const customers = pgTable(
     id: uuid('id').primaryKey().defaultRandom(),
     discordUsername: text('discord_username').notNull(),
     discordId: text('discord_id'), // stable Discord user id (repeat recognition §30)
+    email: text('email'), // billing email (matches Stripe + the ticket's email)
     avatarUrl: text('avatar_url'),
     displayName: text('display_name'),
     totalOrders: integer('total_orders').notNull().default(0),

@@ -18,6 +18,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Card, CardContent } from '@/components/ui/card'
+import { SyncStripeButton } from '@/components/revenue/sync-button'
 
 export const dynamic = 'force-dynamic'
 
@@ -61,6 +62,7 @@ export default async function RevenuePage() {
         marker="revenue"
         title="Revenue"
         meta={`${paidCount} payments · ${live ? `stripe ${stripe.mode}` : 'crm'}`}
+        action={<SyncStripeButton />}
       />
 
       {/* Money */}
