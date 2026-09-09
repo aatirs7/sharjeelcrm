@@ -417,6 +417,43 @@ export const auditLogs = pgTable('audit_logs', {
 })
 
 // ---------------------------------------------------------------------------
+// settings — configurable business rules (spec §17/§30/§40). Key/value.
+// ---------------------------------------------------------------------------
+
+export const settings = pgTable('settings', {
+  key: text('key').primaryKey(),
+  value: jsonb('value'),
+  updatedAt: updatedAt(),
+})
+
+// ---------------------------------------------------------------------------
+// leaderboard_months — archived monthly standings + rewards (spec §17).
+// ---------------------------------------------------------------------------
+
+export const leaderboardMonths = pgTable('leaderboard_months', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  month: text('month').notNull().unique(), // 'YYYY-MM'
+  standings: jsonb('standings'), // [{ rank, coachId, name, buyers, rewardCents }]
+  finalizedAt: timestamp('finalized_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
+// ---------------------------------------------------------------------------
+// products — catalog shown in the ticket menu + tagged on deals (spec §31).
+// ---------------------------------------------------------------------------
+
+export const products = pgTable('products', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  name: text('name').notNull(),
+  category: text('category'),
+  priceCents: integer('price_cents').notNull().default(0),
+  active: boolean('active').notNull().default(true),
+  description: text('description'),
+  notes: text('notes'),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+})
+
+// ---------------------------------------------------------------------------
 // Relations
 // ---------------------------------------------------------------------------
 
@@ -498,3 +535,7 @@ export type CoachContent = typeof coachContent.$inferSelect
 export type Task = typeof tasks.$inferSelect
 export type NewTask = typeof tasks.$inferInsert
 export type AuditLog = typeof auditLogs.$inferSelect
+export type Setting = typeof settings.$inferSelect
+export type LeaderboardMonth = typeof leaderboardMonths.$inferSelect
+export type Product = typeof products.$inferSelect
+export type NewProduct = typeof products.$inferInsert

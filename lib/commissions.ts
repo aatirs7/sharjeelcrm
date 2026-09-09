@@ -1,6 +1,7 @@
 import { eq, inArray } from 'drizzle-orm'
 import { db } from './db'
-import { commissions, orders, leads, coaches } from './db/schema'
+import { commissions, orders, leads, coaches, leaderboardMonths } from './db/schema'
+import { getSettings } from './settings'
 import { recomputeCoachRollups } from './automations'
 import { tierForBuyers } from './money'
 import { getRefundSignals, type RefundSignal } from './stripe'
@@ -38,6 +39,23 @@ export async function syncOrderCommission(orderId: string): Promise<void> {
 
   const eligibleAt = new Date((order.paidAt ? new Date(order.paidAt).getTime() : Date.now()) + 7 * DAY)
   if (!existing) {
+    // Repeat-customer rule (spec §30): under 'first_only', a coach earns only on
+    // the customer's first commissioned purchase.
+    const { repeatCommission } = await getSettings()
+    if (repeatCommission === 'first_only') {
+      const priorOrders = await db.select().from(orders).where(eq(orders.customerId, order.customerId))
+      const priorIds = priorOrders.map((o) => o.id).filter((oid) => oid !== order.id)
+      if (priorIds.length) {
+        const priorCommission = await db
+          .select({ id: commissions.id })
+          .from(commissions)
+          .where(inArray(commissions.orderId, priorIds))
+        if (priorCommission.length > 0) {
+          await recomputeCoachRollups(order.sourceCoachId!)
+          return // repeat purchase: no new commission under first_only
+        }
+      }
+    }
     await db.insert(commissions).values({
       orderId: order.id,
       coachId: order.sourceCoachId!,
@@ -215,4 +233,55 @@ export async function assignMonthlyTiers(): Promise<number> {
     }
   }
   return changed
+}
+
+const monthKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+
+/**
+ * Archive last month's leaderboard once, at the start of a new month (spec §17):
+ * rank coaches by confirmed buyers dated to that month, attach the configured
+ * rewards to the top 3, and store an immutable standings snapshot. Idempotent —
+ * skips if the month is already archived. Returns the archived month or null.
+ */
+export async function finalizePreviousMonth(): Promise<string | null> {
+  const now = new Date()
+  const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+  const key = monthKey(prev)
+
+  const existing = await db.query.leaderboardMonths.findFirst({
+    where: eq(leaderboardMonths.month, key),
+  })
+  if (existing) return null
+
+  const start = prev.getTime()
+  const end = new Date(now.getFullYear(), now.getMonth(), 1).getTime()
+  const [coachRows, ledger] = await Promise.all([
+    db.select().from(coaches),
+    db.select().from(commissions),
+  ])
+  const nameById = new Map(coachRows.map((c) => [c.id, c.name]))
+
+  const buyers = new Map<string, number>()
+  for (const c of ledger) {
+    if ((c.status === 'approved' || c.status === 'paid') && c.approvedAt) {
+      const t = new Date(c.approvedAt).getTime()
+      if (t >= start && t < end) buyers.set(c.coachId, (buyers.get(c.coachId) ?? 0) + 1)
+    }
+  }
+
+  const { leaderboardRewards } = await getSettings()
+  const rewards = [leaderboardRewards.first, leaderboardRewards.second, leaderboardRewards.third]
+  const standings = [...buyers.entries()]
+    .filter(([, n]) => n > 0)
+    .sort((a, b) => b[1] - a[1])
+    .map(([coachId, n], i) => ({
+      rank: i + 1,
+      coachId,
+      name: nameById.get(coachId) ?? '—',
+      buyers: n,
+      rewardCents: rewards[i] ?? 0,
+    }))
+
+  await db.insert(leaderboardMonths).values({ month: key, standings })
+  return key
 }

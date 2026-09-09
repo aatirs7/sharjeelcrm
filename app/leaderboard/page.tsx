@@ -1,6 +1,10 @@
+import { desc } from 'drizzle-orm'
+import { db } from '@/lib/db'
+import { leaderboardMonths } from '@/lib/db/schema'
 import { getLeaderboard } from '@/lib/queries/leaderboard'
 import { formatCents, TIER_THRESHOLDS } from '@/lib/money'
 import { titleCase } from '@/lib/labels'
+import { SectionLabel } from '@/components/page-header'
 import {
   Table,
   TableBody,
@@ -21,8 +25,18 @@ const TIER_CLASSES: Record<string, string> = {
 
 const MEDAL = ['🥇', '🥈', '🥉']
 
+interface Standing {
+  rank: number
+  name: string
+  buyers: number
+  rewardCents: number
+}
+
 export default async function LeaderboardPage() {
-  const rows = await getLeaderboard()
+  const [rows, archive] = await Promise.all([
+    getLeaderboard(),
+    db.select().from(leaderboardMonths).orderBy(desc(leaderboardMonths.month)).limit(6),
+  ])
 
   return (
     <div className="space-y-5">
@@ -73,8 +87,45 @@ export default async function LeaderboardPage() {
 
       <p className="text-center text-xs text-muted-foreground">
         Tiers are assigned from confirmed buyers this month: {TIER_THRESHOLDS.silver}+ = silver,{' '}
-        {TIER_THRESHOLDS.gold}+ = gold. Updated daily.
+        {TIER_THRESHOLDS.gold}+ = gold. Resets and archives monthly. Updated daily.
       </p>
+
+      {archive.length > 0 && (
+        <div className="space-y-3 pt-2">
+          <SectionLabel>past months</SectionLabel>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {archive.map((m) => {
+              const standings = (m.standings as Standing[] | null) ?? []
+              return (
+                <div key={m.id} className="rounded-xl border bg-card p-4">
+                  <div className="mb-2 font-mono text-xs uppercase tracking-[0.14em] text-muted-foreground">
+                    {m.month}
+                  </div>
+                  {standings.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No confirmed buyers.</p>
+                  ) : (
+                    <ol className="space-y-1 text-sm">
+                      {standings.slice(0, 3).map((s) => (
+                        <li key={s.rank} className="flex items-center justify-between gap-2">
+                          <span>
+                            {['🥇', '🥈', '🥉'][s.rank - 1]} {s.name}
+                            <span className="ml-1 text-muted-foreground">· {s.buyers}</span>
+                          </span>
+                          {s.rewardCents > 0 && (
+                            <span className="font-medium text-emerald-600 dark:text-emerald-400">
+                              {formatCents(s.rewardCents)}
+                            </span>
+                          )}
+                        </li>
+                      ))}
+                    </ol>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
