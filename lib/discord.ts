@@ -71,6 +71,36 @@ export interface DiscordRole {
   position: number
 }
 
+const VIEW_CHANNEL = BigInt(1024) // 1 << 10
+const SEND_MESSAGES = BigInt(2048) // 1 << 11
+
+/**
+ * Create a private ticket channel for a buyer (spec §3/§4): only the buyer, the
+ * bot, and staff-with-admin can see it (@everyone is denied view). Returns the
+ * new channel id, or null on failure.
+ */
+export async function createTicketChannel(
+  guildId: string,
+  buyerId: string,
+  name: string
+): Promise<string | null> {
+  const overwrites = [
+    { id: guildId, type: 0, deny: String(VIEW_CHANNEL) }, // @everyone: no view
+    { id: buyerId, type: 1, allow: String(VIEW_CHANNEL | SEND_MESSAGES) }, // buyer
+  ]
+  if (SELF_BOT_ID) overwrites.push({ id: SELF_BOT_ID, type: 1, allow: String(VIEW_CHANNEL | SEND_MESSAGES) })
+  const body: Record<string, unknown> = {
+    name: name.slice(0, 90),
+    type: 0,
+    permission_overwrites: overwrites,
+  }
+  if (process.env.TICKET_CATEGORY_ID) body.parent_id = process.env.TICKET_CATEGORY_ID
+  const res = await dpost(`/guilds/${guildId}/channels`, body)
+  if (!res.ok) return null
+  const ch = (await res.json()) as { id: string }
+  return ch.id
+}
+
 /** All roles in the guild. */
 export async function listRoles(guildId: string): Promise<DiscordRole[]> {
   return dget<DiscordRole[]>(`/guilds/${guildId}/roles`)
@@ -98,7 +128,7 @@ export async function assignMemberRole(
 /** Post a message (content and/or embeds) to a channel. Safe no-op without a channel. */
 export async function postToChannel(
   channelId: string | null | undefined,
-  payload: { content?: string; embeds?: unknown[] }
+  payload: { content?: string; embeds?: unknown[]; components?: unknown[] }
 ): Promise<boolean> {
   if (!channelId) return false
   const res = await dpost(`/channels/${channelId}/messages`, payload)

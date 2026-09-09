@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
 import crypto from 'node:crypto'
 import { applyTicketTag, type TicketTag } from '@/lib/ticket-tag'
+import { createTicketChannel, postToChannel } from '@/lib/discord'
+import { ingestTicketLead } from '@/lib/leads-ingest'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -40,6 +42,15 @@ const TAG_LABEL: Record<TicketTag, string> = {
   question: '❓ Question',
 }
 
+// Sales-panel button config: label, welcome copy, CRM ticket type + route tag.
+const PANEL = {
+  buy: { label: 'purchase', welcome: 'thanks for your interest in a TikTok Shop account!', ticketType: 'purchase' as const, route: 'SHOP' },
+  bulk: { label: 'bulk order', welcome: 'thanks for your interest in a bulk order!', ticketType: 'purchase' as const, route: 'BUNDLE' },
+  support: { label: 'support', welcome: 'how can we help with your existing order?', ticketType: 'support' as const, route: 'SUPPORT' },
+  partner: { label: 'partner', welcome: 'thanks for your interest in becoming a referral partner!', ticketType: 'question' as const, route: 'PARTNER' },
+  other: { label: 'question', welcome: 'thanks for reaching out!', ticketType: 'question' as const, route: 'SHOP' },
+}
+
 export async function POST(req: Request): Promise<NextResponse> {
   const publicKey = process.env.DISCORD_PUBLIC_KEY
   const signature = req.headers.get('x-signature-ed25519')
@@ -58,6 +69,41 @@ export async function POST(req: Request): Promise<NextResponse> {
 
   if (interaction.type === MESSAGE_COMPONENT) {
     const customId: string = interaction.data?.custom_id ?? ''
+
+    // Sales panel (spec §3): a buyer clicks a panel button -> open a private
+    // ticket channel + seed the deal card.
+    if (customId.startsWith('panel:')) {
+      const kind = customId.split(':')[1] as keyof typeof PANEL
+      const cfg = PANEL[kind] ?? PANEL.other
+      const guildId = interaction.guild_id
+      const user = interaction.member?.user ?? interaction.user
+      if (!guildId || !user?.id) {
+        return NextResponse.json({ type: 4, data: { content: 'Could not open a ticket.', flags: EPHEMERAL } })
+      }
+      const safe = String(user.username || 'buyer').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 20)
+      const channelId = await createTicketChannel(guildId, user.id, `ticket-${safe}`)
+      if (!channelId) {
+        return NextResponse.json({ type: 4, data: { content: 'Could not create your ticket, please ping staff.', flags: EPHEMERAL } })
+      }
+      const link = `https://discord.com/channels/${guildId}/${channelId}`
+      await postToChannel(channelId, {
+        content: `<@${user.id}> ${cfg.welcome}\n\nIf you have a **referral or promo code**, drop it here and a team member will be with you shortly.`,
+      })
+      await ingestTicketLead({
+        discordUsername: user.username ?? 'buyer',
+        discordUserId: user.id,
+        discordChannelId: channelId,
+        ticketLink: link,
+        source: 'discord',
+        ticketType: cfg.ticketType,
+        routeCategory: cfg.route,
+      })
+      return NextResponse.json({
+        type: 4,
+        data: { content: `Your ${cfg.label} ticket is ready: <#${channelId}>`, flags: EPHEMERAL },
+      })
+    }
+
     if (!customId.startsWith('tag:')) {
       return NextResponse.json({ type: PONG })
     }

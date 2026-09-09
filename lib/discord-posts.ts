@@ -12,6 +12,38 @@ function adminChannel(): string | null {
   return process.env.ADMIN_NOTIFY_CHANNEL_ID || process.env.STAFF_CHANNEL_ID || null
 }
 
+/** Post the sales panel (buttons that open a ticket) to a public channel (spec §3). */
+export async function postSalesPanel(channelId: string): Promise<boolean> {
+  return postToChannel(channelId, {
+    embeds: [
+      {
+        title: '🛍️ Open a ticket',
+        description:
+          'Pick what you need below and a private ticket opens just for you.\n\n' +
+          '🛒 **Buy an account** · 📦 **Bulk order** · 🛟 **Support** · 🤝 **Become a partner** · ❓ **Other**',
+        color: 0x2f66e6,
+      },
+    ],
+    components: [
+      {
+        type: 1,
+        components: [
+          { type: 2, style: 3, label: 'Buy Account', emoji: { name: '🛒' }, custom_id: 'panel:buy' },
+          { type: 2, style: 1, label: 'Bulk Order', emoji: { name: '📦' }, custom_id: 'panel:bulk' },
+          { type: 2, style: 2, label: 'Support', emoji: { name: '🛟' }, custom_id: 'panel:support' },
+        ],
+      },
+      {
+        type: 1,
+        components: [
+          { type: 2, style: 2, label: 'Become a Partner', emoji: { name: '🤝' }, custom_id: 'panel:partner' },
+          { type: 2, style: 2, label: 'Other', emoji: { name: '❓' }, custom_id: 'panel:other' },
+        ],
+      },
+    ],
+  })
+}
+
 /** Post an event notification to the private admin channel. */
 export async function postAdminNotify(
   title: string,
