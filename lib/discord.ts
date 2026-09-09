@@ -233,18 +233,28 @@ export async function findBuyer(
   return null
 }
 
-/** The buyer's first text message in the ticket (needs Message Content intent). */
-export async function firstBuyerMessage(channelId: string, buyerId: string): Promise<string | null> {
+/**
+ * The buyer's own text messages in the ticket, oldest first (up to the first 25
+ * messages in the channel). Needs the Message Content intent enabled on the bot.
+ */
+export async function buyerMessages(channelId: string, buyerId: string): Promise<string[]> {
   try {
     const msgs = await dget<{ id: string; content: string; author: { id: string } }[]>(
-      `/channels/${channelId}/messages?after=1&limit=10`
+      `/channels/${channelId}/messages?after=1&limit=25`
     )
-    const ordered = msgs.slice().sort((a, b) => (BigInt(a.id) < BigInt(b.id) ? -1 : 1))
-    const mine = ordered.filter((m) => m.author?.id === buyerId && m.content?.trim())
-    return mine[0]?.content?.slice(0, 500) ?? null
+    return msgs
+      .slice()
+      .sort((a, b) => (BigInt(a.id) < BigInt(b.id) ? -1 : 1))
+      .filter((m) => m.author?.id === buyerId && m.content?.trim())
+      .map((m) => m.content.slice(0, 500))
   } catch {
-    return null
+    return []
   }
+}
+
+/** The buyer's first text message in the ticket (needs Message Content intent). */
+export async function firstBuyerMessage(channelId: string, buyerId: string): Promise<string | null> {
+  return (await buyerMessages(channelId, buyerId))[0] ?? null
 }
 
 /** Classify a ticket from the buyer's first message: purchase | support | question. */

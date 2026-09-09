@@ -1,11 +1,12 @@
-import { NextResponse } from 'next/server'
+import { NextResponse, after } from 'next/server'
 import crypto from 'node:crypto'
 import { applyTicketTag, type TicketTag } from '@/lib/ticket-tag'
 import { and, eq } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { leads, products, reps } from '@/lib/db/schema'
-import { createTicketChannel, postToChannel } from '@/lib/discord'
+import { createTicketChannel, dpatch, postToChannel } from '@/lib/discord'
 import { ingestTicketLead } from '@/lib/leads-ingest'
+import { applyReferralCode } from '@/lib/referral-code'
 import { postAdminNotify } from '@/lib/discord-posts'
 import { createOrderForLead } from '@/lib/deal'
 import { formatCents } from '@/lib/money'
@@ -18,8 +19,11 @@ export const runtime = 'nodejs'
 // Discord interaction + response type constants.
 const PING = 1
 const MESSAGE_COMPONENT = 3
+const MODAL_SUBMIT = 5
 const PONG = 1
+const DEFERRED_EPHEMERAL = 5 // "thinking…" placeholder we edit once the work is done
 const UPDATE_MESSAGE = 7
+const MODAL = 9
 const EPHEMERAL = 64
 const MANAGE_CHANNELS = BigInt(16) // 1 << 4
 
@@ -125,6 +129,67 @@ async function postPaymentPicker(channelId: string, productName: string, priceCe
   })
 }
 
+/**
+ * Discord drops an interaction that isn't answered within 3 seconds. Opening a
+ * ticket (create channel, seed the deal, post controls) can take longer, so
+ * acknowledge immediately with an ephemeral placeholder, do the work after the
+ * response is sent, then edit the placeholder with the outcome.
+ */
+function deferAndRun(
+  interaction: { application_id: string; token: string },
+  work: () => Promise<string>
+): NextResponse {
+  after(async () => {
+    let content: string
+    try {
+      content = await work()
+    } catch (e) {
+      console.error('discord interaction failed', e)
+      content = 'Something went wrong — please ping staff.'
+    }
+    await dpatch(`/webhooks/${interaction.application_id}/${interaction.token}/messages/@original`, { content })
+  })
+  return NextResponse.json({ type: DEFERRED_EPHEMERAL, data: { flags: EPHEMERAL } })
+}
+
+/** The "Enter referral code" button shown under the ticket welcome message. */
+function codeButtonRow(channelId: string) {
+  return {
+    type: 1,
+    components: [
+      { type: 2, style: 1, label: 'Enter referral code', emoji: { name: '🎟️' }, custom_id: `code:open:${channelId}` },
+    ],
+  }
+}
+
+/** Pop-up form (modal) where the buyer types their referral / promo code. */
+function codeModal(channelId: string) {
+  return {
+    type: MODAL,
+    data: {
+      custom_id: `code:submit:${channelId}`,
+      title: 'Referral / promo code',
+      components: [
+        {
+          type: 1,
+          components: [
+            {
+              type: 4, // text input
+              custom_id: 'code',
+              label: 'Your code',
+              style: 1,
+              min_length: 2,
+              max_length: 32,
+              placeholder: 'e.g. AA10',
+              required: true,
+            },
+          ],
+        },
+      ],
+    },
+  }
+}
+
 const MANAGE = BigInt(16)
 const isStaff = (interaction: { member?: { permissions?: string } }) =>
   (BigInt(interaction.member?.permissions ?? '0') & MANAGE) === MANAGE
@@ -145,6 +210,33 @@ export async function POST(req: Request): Promise<NextResponse> {
     return NextResponse.json({ type: PONG })
   }
 
+  // Buyer submitted the referral-code form from inside their ticket.
+  if (interaction.type === MODAL_SUBMIT) {
+    const customId: string = interaction.data?.custom_id ?? ''
+    if (!customId.startsWith('code:submit:')) {
+      return NextResponse.json({ type: PONG })
+    }
+    const channelId = customId.split(':')[2]
+    const typed: string = interaction.data?.components?.[0]?.components?.[0]?.value ?? ''
+    const lead = await db.query.leads.findFirst({ where: eq(leads.discordChannelId, channelId) })
+    if (!lead) {
+      return NextResponse.json({ type: 4, data: { content: 'No deal is linked to this ticket.', flags: EPHEMERAL } })
+    }
+    const clicker = interaction.member?.user ?? interaction.user
+    if (lead.discordUserId && clicker?.id !== lead.discordUserId && !isStaff(interaction)) {
+      return NextResponse.json({ type: 4, data: { content: 'Only the ticket owner can enter a code here.', flags: EPHEMERAL } })
+    }
+    if (!typed.replace(/[^A-Za-z0-9_-]/g, '')) {
+      return NextResponse.json({ type: 4, data: { content: 'That code is empty — try again with letters and numbers only.', flags: EPHEMERAL } })
+    }
+    return deferAndRun(interaction, async () => {
+      const result = await applyReferralCode(lead, typed, interaction.guild_id)
+      return result.coachName
+        ? `Code **${result.code}** applied — you're referred by **${result.coachName}**.`
+        : `Code **${result.code}** noted — a team member will check it shortly.`
+    })
+  }
+
   if (interaction.type === MESSAGE_COMPONENT) {
     const customId: string = interaction.data?.custom_id ?? ''
 
@@ -159,33 +251,37 @@ export async function POST(req: Request): Promise<NextResponse> {
         return NextResponse.json({ type: 4, data: { content: 'Could not open a ticket.', flags: EPHEMERAL } })
       }
       const safe = String(user.username || 'buyer').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 20)
-      const channelId = await createTicketChannel(guildId, user.id, `ticket-${safe}`)
-      if (!channelId) {
-        return NextResponse.json({ type: 4, data: { content: 'Could not create your ticket, please ping staff.', flags: EPHEMERAL } })
-      }
-      const link = `https://discord.com/channels/${guildId}/${channelId}`
-      await postToChannel(channelId, {
-        content: `<@${user.id}> ${cfg.welcome}\n\nIf you have a **referral or promo code**, drop it here and a team member will be with you shortly.`,
+      return deferAndRun(interaction, async () => {
+        const channelId = await createTicketChannel(guildId, user.id, `ticket-${safe}`)
+        if (!channelId) return 'Could not create your ticket, please ping staff.'
+        const link = `https://discord.com/channels/${guildId}/${channelId}`
+        await postToChannel(channelId, {
+          content: `<@${user.id}> ${cfg.welcome}\n\nIf you have a **referral or promo code**, tap the button below or just type it here. A team member will be with you shortly.`,
+          components: [codeButtonRow(channelId)],
+        })
+        await ingestTicketLead({
+          discordUsername: user.username ?? 'buyer',
+          discordUserId: user.id,
+          discordChannelId: channelId,
+          ticketLink: link,
+          source: 'discord',
+          ticketType: cfg.ticketType,
+          routeCategory: cfg.route,
+        })
+        await postAdminNotify(
+          '🎫 New ticket',
+          [`Type: ${cfg.label}`, `Customer: ${user.username ?? user.id}`, `Channel: <#${channelId}>`],
+          0x3b82f6
+        )
+        await postTicketControls(channelId)
+        return `Your ${cfg.label} ticket is ready: <#${channelId}>`
       })
-      await ingestTicketLead({
-        discordUsername: user.username ?? 'buyer',
-        discordUserId: user.id,
-        discordChannelId: channelId,
-        ticketLink: link,
-        source: 'discord',
-        ticketType: cfg.ticketType,
-        routeCategory: cfg.route,
-      })
-      await postAdminNotify(
-        '🎫 New ticket',
-        [`Type: ${cfg.label}`, `Customer: ${user.username ?? user.id}`, `Channel: <#${channelId}>`],
-        0x3b82f6
-      )
-      await postTicketControls(channelId)
-      return NextResponse.json({
-        type: 4,
-        data: { content: `Your ${cfg.label} ticket is ready: <#${channelId}>`, flags: EPHEMERAL },
-      })
+    }
+
+    // Buyer taps "Enter referral code" -> open the pop-up form.
+    if (customId.startsWith('code:open:')) {
+      const channelId = customId.split(':')[2]
+      return NextResponse.json(codeModal(channelId))
     }
 
     // Buyer picks a product from the ticket menu (spec §31).

@@ -129,6 +129,16 @@ netProfitCents      = profit - commission
   tag buttons.
 - **Button interactions** — `app/api/discord/interactions/route.ts`. Ed25519-verifies the
   signature, then tags the ticket (purchase/support/question) via `lib/ticket-tag.ts`.
+  Ticket creation from the sales panel answers Discord with a deferred placeholder and
+  finishes the work in `after()` (Discord drops interactions not answered in 3 s).
+- **Referral codes in the ticket** — the welcome message carries an **Enter referral code**
+  button that opens a modal; the submit handler (`code:submit:<channel>`) runs
+  `applyReferralCode()` (`lib/referral-code.ts`): stores the code, links the coach when it
+  matches a `promo_code` (case-insensitive, self-referrals excluded), gives the buyer the
+  coach's lead role, confirms in the ticket and pings staff. Buyers who just *type* the code
+  are picked up by the hourly poll, which re-reads the buyer's messages in tickets under 48 h
+  old that have no code yet. Reading message text needs the **Message Content intent** enabled
+  on the bot in the Developer Portal; the button path does not.
 - Tag buttons post to the **staff channel** (`STAFF_CHANNEL_ID`), never inside customer
   ticket channels.
 - Classification is keyword-based (`lib/discord.ts` `classifyTicket`) — all 371 existing

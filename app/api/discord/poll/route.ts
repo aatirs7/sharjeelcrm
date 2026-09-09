@@ -1,13 +1,15 @@
 import { NextResponse } from 'next/server'
-import { and, eq, isNotNull, isNull, lt, sql } from 'drizzle-orm'
+import { and, desc, eq, gte, isNotNull, isNull, lt } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { leads, coaches } from '@/lib/db/schema'
 import { ingestTicketLead } from '@/lib/leads-ingest'
 import { postAdminNotify } from '@/lib/discord-posts'
+import { applyReferralCode } from '@/lib/referral-code'
 import {
   listTicketChannels,
   findBuyer,
   firstBuyerMessage,
+  buyerMessages,
   detectReferralCode,
   matchKnownPromo,
   classifyTicket,
@@ -21,11 +23,15 @@ export const maxDuration = 60
 
 const MAX_PER_RUN = 15
 
+// How long after a ticket opens we keep scanning it for a typed referral code.
+const CODE_SCAN_HOURS = 48
+const CODE_SCAN_MAX = 25
+
 /**
- * Hourly Vercel Cron: find tickets opened since the last run, create/enrich a
- * lead for each, and post the staff tag buttons. Watermark = the highest ticket
- * channel id we've already turned into a lead (channel ids are time-ordered
- * snowflakes), so each run only handles genuinely new tickets.
+ * Hourly Vercel Cron: find open ticket channels that don't have a lead yet,
+ * create/enrich a lead for each, and post the staff tag buttons. Then re-read
+ * recent panel tickets (those are ingested the instant they open, before the
+ * buyer has typed anything) so a referral code typed into the chat still counts.
  *
  * Vercel Cron sends GET with `Authorization: Bearer <CRON_SECRET>`.
  */
@@ -39,17 +45,19 @@ async function handle(req: Request): Promise<NextResponse> {
     return NextResponse.json({ error: 'BOT_TOKEN / GUILD_ID not configured' }, { status: 500 })
   }
 
-  // Watermark: max numeric ticket channel id already ingested.
-  const [row] = await db
-    .select({ m: sql<string | null>`max(${leads.discordChannelId}::bigint)` })
+  // Every ticket channel we already turned into a lead (panel tickets are
+  // ingested the moment they open, so a plain id watermark would skip any older
+  // Ticket Tool ticket that hadn't been polled yet).
+  const knownRows = await db
+    .select({ id: leads.discordChannelId })
     .from(leads)
-    .where(sql`${leads.discordChannelId} ~ '^[0-9]+$'`)
-  const watermark = row?.m ? BigInt(row.m) : BigInt(0)
+    .where(isNotNull(leads.discordChannelId))
+  const known = new Set(knownRows.map((r) => r.id!))
 
   const channels = await listTicketChannels(guildId)
   const fresh = channels
-    .filter((c) => BigInt(c.id) > watermark)
-    .sort((a, b) => (BigInt(a.id) < BigInt(b.id) ? -1 : 1)) // oldest first
+    .filter((c) => !known.has(c.id))
+    .sort((a, b) => (BigInt(a.id) < BigInt(b.id) ? 1 : -1)) // newest first, so a stuck one can't starve new tickets
     .slice(0, MAX_PER_RUN)
 
   // Known coach promo codes drive attribution (reliable match beats the regex).
@@ -98,6 +106,45 @@ async function handle(req: Request): Promise<NextResponse> {
     created++
   }
 
+  // Referral-code catch-up: recent tickets with no code yet — read the buyer's
+  // messages and apply the first code found (known coach codes win). The
+  // "Enter referral code" button in the ticket is instant; this covers buyers
+  // who just type the code into the chat instead.
+  const scanCutoff = new Date(Date.now() - CODE_SCAN_HOURS * 3_600_000)
+  const pending = await db
+    .select()
+    .from(leads)
+    .where(
+      and(
+        isNotNull(leads.discordChannelId),
+        isNotNull(leads.discordUserId),
+        isNull(leads.referralCode),
+        gte(leads.createdAt, scanCutoff)
+      )
+    )
+    .orderBy(desc(leads.createdAt))
+    .limit(CODE_SCAN_MAX)
+  let codesApplied = 0
+  let scanned = 0
+  for (const l of pending) {
+    const msgs = await buyerMessages(l.discordChannelId!, l.discordUserId!)
+    if (msgs.length === 0) continue
+    scanned++
+    if (!l.interest) {
+      await db.update(leads).set({ interest: msgs[0] }).where(eq(leads.id, l.id))
+    }
+    // A known coach code counts anywhere; the loose pattern only counts in a
+    // short reply (like "AA10") or next to a cue word, to avoid false positives.
+    const cue = /(code|promo|coupon|discount|referr|sent me)/i
+    const code =
+      matchKnownPromo(msgs.join('\n'), promoCodes) ??
+      msgs.filter((m) => m.length <= 24 || cue.test(m)).map(detectReferralCode).find(Boolean) ??
+      null
+    if (!code) continue
+    await applyReferralCode(l, code, guildId)
+    codesApplied++
+  }
+
   // SLA: alert on tickets still unclaimed with no response after 2 hours (§36).
   const slaHours = Number(process.env.SLA_HOURS || '2')
   const cutoff = new Date(Date.now() - slaHours * 3_600_000)
@@ -127,12 +174,14 @@ async function handle(req: Request): Promise<NextResponse> {
     ok: true,
     ranAt: new Date().toISOString(),
     scanned: channels.length,
-    newSinceWatermark: fresh.length,
+    newTickets: fresh.length,
     leadsCreated: created,
     rolesAssigned,
+    codesScanned: scanned,
+    codesApplied,
     slaAlerts: stale.length,
     noBuyer,
-    capped: channels.filter((c) => BigInt(c.id) > watermark).length > MAX_PER_RUN,
+    capped: channels.filter((c) => !known.has(c.id)).length > MAX_PER_RUN,
   })
 }
 
