@@ -30,9 +30,37 @@ const MATRIX: Record<Role, Capability[]> = {
 export const STAFF_ROLES: Role[] = ['owner', 'admin', 'manager', 'worker']
 export const isStaffRole = (r: Role | undefined | null): boolean => !!r && STAFF_ROLES.includes(r)
 
+export const ALL_CAPABILITIES: Capability[] = [
+  'deals', 'financials', 'coaches', 'payouts', 'workers', 'settings', 'products', 'audit', 'fraud', 'leaderboard',
+]
+
 export function can(role: Role | undefined | null, cap: Capability): boolean {
   return !!role && (MATRIX[role]?.includes(cap) ?? false)
 }
+
+/** Owner-configurable revokes: which base capabilities are taken from a role (§40). */
+export type RoleOverrides = { admin?: Capability[]; manager?: Capability[] }
+
+/** Base capabilities minus any owner revoke for that role. Owner is never revoked. */
+export function effectiveCan(
+  role: Role | undefined | null,
+  cap: Capability,
+  overrides: RoleOverrides | null | undefined
+): boolean {
+  if (!can(role, cap)) return false
+  if (role === 'admin' || role === 'manager') {
+    if (overrides?.[role]?.includes(cap)) return false
+  }
+  return true
+}
+
+/** The effective capability list for a role after revokes. */
+export function effectiveCaps(role: Role, overrides: RoleOverrides | null | undefined): Capability[] {
+  return (MATRIX[role] ?? []).filter((c) => effectiveCan(role, c, overrides))
+}
+
+/** Which roles are overridable (owner is not, worker/coach have minimal/none). */
+export const OVERRIDABLE_ROLES: ('admin' | 'manager')[] = ['admin', 'manager']
 
 /** Where each role lands after login / when blocked from a page. */
 export function landingFor(role: Role): string {
@@ -50,6 +78,7 @@ export function capabilityForPath(pathname: string): Capability {
     ['/payouts', 'payouts'],
     ['/workers', 'workers'],
     ['/settings', 'settings'],
+    ['/permissions', 'settings'],
     ['/products', 'products'],
     ['/inventory', 'products'],
     ['/audit', 'audit'],

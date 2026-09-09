@@ -33,6 +33,7 @@ const STAFF_NAV: NavItem[] = [
   { href: "/fraud", label: "fraud", cap: "fraud" },
   { href: "/audit", label: "audit", cap: "audit" },
   { href: "/settings", label: "settings", cap: "settings" },
+  { href: "/permissions", label: "permissions", cap: "settings" },
 ];
 
 const COACH_NAV: NavItem[] = [{ href: "/coach", label: "dashboard", cap: "deals" }];
@@ -41,14 +42,15 @@ function isActive(pathname: string, href: string) {
   return href === "/" ? pathname === "/" : pathname.startsWith(href);
 }
 
-export function AppNav({ role = "owner" }: { role?: Role }) {
+export function AppNav({ role = "owner", allowed }: { role?: Role; allowed?: Capability[] }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const personal = role === "worker" || role === "manager"; // owner/admin use /workers instead
+  const permit = (cap: Capability) => (allowed ? allowed.includes(cap) : can(role, cap));
   const NAV =
     role === "coach"
       ? COACH_NAV
-      : STAFF_NAV.filter((n) => can(role, n.cap) && (!n.personal || personal));
+      : STAFF_NAV.filter((n) => permit(n.cap) && (!n.personal || personal));
 
   // Close the mobile menu on navigation.
   // eslint-disable-next-line react-hooks/set-state-in-effect

@@ -5,6 +5,8 @@ import { ThemeProvider } from "@/components/theme-provider";
 import { AppNav } from "@/components/app-nav";
 import { WhatsNew } from "@/components/whats-new";
 import { getSession } from "@/lib/auth";
+import { getRoleOverrides } from "@/lib/settings";
+import { effectiveCaps } from "@/lib/permissions";
 import "./globals.css";
 
 const display = Bricolage_Grotesque({
@@ -35,6 +37,11 @@ export default async function RootLayout({
   children: React.ReactNode;
 }>) {
   const session = await getSession();
+  const role = session?.role ?? "owner";
+  const allowed =
+    role === "admin" || role === "manager"
+      ? effectiveCaps(role, await getRoleOverrides())
+      : undefined;
   return (
     <html
       lang="en"
@@ -48,8 +55,8 @@ export default async function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          <AppNav role={session?.role ?? "owner"} />
-          <WhatsNew role={session?.role ?? "owner"} />
+          <AppNav role={role} allowed={allowed} />
+          <WhatsNew role={role} />
           <main className="flex-1 w-full max-w-[76rem] mx-auto px-5 py-8 md:py-10 space-y-8">
             {children}
           </main>

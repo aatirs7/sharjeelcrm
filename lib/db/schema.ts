@@ -360,6 +360,20 @@ export const commissions = pgTable('commissions', {
 // coach_content — per-coach content tracking (mostly manual entry).
 // ---------------------------------------------------------------------------
 
+// coach_achievements — unlocked gamification milestones (spec §19).
+export const coachAchievements = pgTable(
+  'coach_achievements',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    coachId: uuid('coach_id')
+      .notNull()
+      .references(() => coaches.id),
+    key: text('key').notNull(), // first_sale | five | ten | twenty_five | fifty | hundred
+    unlockedAt: timestamp('unlocked_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [unique('coach_achievements_coach_key_unique').on(t.coachId, t.key)]
+)
+
 export const coachContent = pgTable('coach_content', {
   id: uuid('id').primaryKey().defaultRandom(),
   coachId: uuid('coach_id')

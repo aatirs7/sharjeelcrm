@@ -4,6 +4,7 @@ import { db } from '@/lib/db'
 import { coaches, leads, commissions, coachContent, payoutRequests } from '@/lib/db/schema'
 import { getCurrentCoachId, isAdmin } from '@/lib/auth'
 import { getCoachPayouts } from '@/lib/queries/payouts'
+import { getCoachAchievements, ACHIEVEMENTS } from '@/lib/achievements'
 import { formatCents } from '@/lib/money'
 import { titleCase } from '@/lib/labels'
 import { MetricCard } from '@/components/dashboard/metric-card'
@@ -36,13 +37,15 @@ export default async function CoachDashboard() {
   const coach = await db.query.coaches.findFirst({ where: eq(coaches.id, coachId!) })
   if (!coach) redirect('/login')
 
-  const [myLeads, ledger, payoutHistory, content, myRequests] = await Promise.all([
+  const [myLeads, ledger, payoutHistory, content, myRequests, achievements] = await Promise.all([
     db.select().from(leads).where(eq(leads.sourceCoachId, coachId!)),
     db.select().from(commissions).where(eq(commissions.coachId, coachId!)),
     getCoachPayouts(coachId!),
     db.select().from(coachContent).where(eq(coachContent.coachId, coachId!)),
     db.select().from(payoutRequests).where(eq(payoutRequests.coachId, coachId!)),
+    getCoachAchievements(coachId!),
   ])
+  const unlocked = new Set(achievements)
   const hasPendingRequest = myRequests.some((r) => r.status === 'pending')
 
   const ticketsOpened = myLeads.length
@@ -83,6 +86,28 @@ export default async function CoachDashboard() {
         </div>
         <div className="flex justify-center pt-1">
           <RequestPayoutButton availableCents={approvedCents} hasPending={hasPendingRequest} />
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        <SectionLabel>achievements</SectionLabel>
+        <div className="flex flex-wrap gap-2">
+          {ACHIEVEMENTS.map((a) => {
+            const on = unlocked.has(a.key)
+            return (
+              <span
+                key={a.key}
+                className={
+                  'rounded-full border px-3 py-1.5 text-sm ' +
+                  (on
+                    ? 'border-amber-300 bg-amber-100 text-amber-800 dark:border-amber-900 dark:bg-amber-950/50 dark:text-amber-300'
+                    : 'border-border text-muted-foreground opacity-60')
+                }
+              >
+                {on ? '🏅' : '🔒'} {a.label}
+              </span>
+            )
+          })}
         </div>
       </div>
 

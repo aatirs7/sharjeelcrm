@@ -1,7 +1,8 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { PIN_COOKIE } from '@/lib/pin'
 import { parseSession } from '@/lib/session'
-import { can, capabilityForPath, landingFor } from '@/lib/permissions'
+import { effectiveCan, capabilityForPath, landingFor } from '@/lib/permissions'
+import { getRoleOverrides } from '@/lib/settings'
 
 /**
  * Auth gate.
@@ -12,7 +13,7 @@ import { can, capabilityForPath, landingFor } from '@/lib/permissions'
  * Server actions/pages additionally assert role (defense in depth) — the proxy
  * is the first gate, not the only one.
  */
-export function proxy(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl
 
   if (pathname === '/login' || pathname.startsWith('/api/') || pathname.startsWith('/ref/')) {
@@ -37,8 +38,12 @@ export function proxy(request: NextRequest) {
     return NextResponse.next()
   }
 
-  // Staff (owner/admin/manager/worker): gate each path by capability.
-  if (!can(session.role, capabilityForPath(pathname))) {
+  // Staff (owner/admin/manager/worker): gate each path by capability. Only
+  // admin/manager can carry owner-set revokes, so only they need the lookup.
+  const cap = capabilityForPath(pathname)
+  const overrides =
+    session.role === 'admin' || session.role === 'manager' ? await getRoleOverrides() : null
+  if (!effectiveCan(session.role, cap, overrides)) {
     const url = request.nextUrl.clone()
     url.pathname = landingFor(session.role)
     url.search = ''

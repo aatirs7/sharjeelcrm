@@ -1,6 +1,7 @@
 import { eq } from 'drizzle-orm'
 import { db } from './db'
 import { settings } from './db/schema'
+import type { RoleOverrides } from './permissions'
 
 /**
  * Configurable business rules (spec §17/§30/§40). Stored one row per key with a
@@ -12,11 +13,14 @@ export interface AppSettings {
   // Repeat-customer commission: 'first_only' pays the coach on the customer's
   // first completed purchase only; 'every_purchase' pays on every one.
   repeatCommission: 'first_only' | 'every_purchase'
+  // Per-role capability revokes (§40). Owner is never revoked.
+  roleOverrides: RoleOverrides
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
   leaderboardRewards: { first: 0, second: 0, third: 0 },
   repeatCommission: 'first_only',
+  roleOverrides: { admin: [], manager: [] },
 }
 
 export async function getSettings(): Promise<AppSettings> {
@@ -29,7 +33,15 @@ export async function getSettings(): Promise<AppSettings> {
     repeatCommission:
       (map.get('repeatCommission') as AppSettings['repeatCommission']) ??
       DEFAULT_SETTINGS.repeatCommission,
+    roleOverrides:
+      (map.get('roleOverrides') as AppSettings['roleOverrides']) ?? DEFAULT_SETTINGS.roleOverrides,
   }
+}
+
+/** Just the role overrides (used by the proxy + capability checks). */
+export async function getRoleOverrides(): Promise<RoleOverrides> {
+  const [row] = await db.select().from(settings).where(eq(settings.key, 'roleOverrides'))
+  return (row?.value as RoleOverrides) ?? DEFAULT_SETTINGS.roleOverrides
 }
 
 export async function getSetting<K extends keyof AppSettings>(key: K): Promise<AppSettings[K]> {

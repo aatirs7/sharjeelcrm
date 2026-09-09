@@ -3,7 +3,8 @@ import { eq } from 'drizzle-orm'
 import { db } from './db'
 import { reps, type Rep } from './db/schema'
 import { PIN_COOKIE, parseSession, type Session } from './session'
-import { can, isStaffRole, type Capability, type Role } from './permissions'
+import { can, effectiveCan, isStaffRole, type Capability, type Role } from './permissions'
+import { getRoleOverrides } from './settings'
 
 // ---------------------------------------------------------------------------
 // Identity from the HMAC-signed session cookie (lib/session.ts):
@@ -47,7 +48,9 @@ export async function isOwner(): Promise<boolean> {
 }
 
 export async function hasCapability(cap: Capability): Promise<boolean> {
-  return can(await getRole(), cap)
+  const role = await getRole()
+  if (role !== 'admin' && role !== 'manager') return can(role, cap)
+  return effectiveCan(role, cap, await getRoleOverrides())
 }
 
 /** The signed-in coach's id, or null when the session is not a coach. */
@@ -72,10 +75,10 @@ export async function requireStaff(): Promise<Rep> {
   return rep
 }
 
-/** Guard requiring a specific capability. */
+/** Guard requiring a specific capability (respects owner overrides). */
 export async function requireCapability(cap: Capability): Promise<Rep> {
   const rep = await getCurrentRep()
-  if (!rep || !can(await getRole(), cap)) throw new Error(`Forbidden: ${cap} required`)
+  if (!rep || !(await hasCapability(cap))) throw new Error(`Forbidden: ${cap} required`)
   return rep
 }
 
