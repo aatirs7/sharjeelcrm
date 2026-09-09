@@ -161,10 +161,15 @@ export async function recomputeCoachRollups(coachId: string): Promise<void> {
   const revenueCents = paid.reduce((s, o) => s + o.priceCents, 0)
 
   const ledger = await db.select().from(commissions).where(eq(commissions.coachId, coachId))
-  const owedCents = ledger
+  const approvedUnpaid = ledger
     .filter((c) => c.status === 'approved' && c.payoutId == null)
     .reduce((s, c) => s + c.amountCents, 0)
   const paidCents = ledger.filter((c) => c.status === 'paid').reduce((s, c) => s + c.amountCents, 0)
+  // Reversed commissions (already-paid sales later refunded) are clawed back out
+  // of the coach's balance — "cut from their profit" — so owed can go negative,
+  // meaning the coach owes it back / it nets against future earnings.
+  const reversedCents = ledger.filter((c) => c.status === 'reversed').reduce((s, c) => s + c.amountCents, 0)
+  const owedCents = approvedUnpaid - reversedCents
 
   await db
     .update(coaches)

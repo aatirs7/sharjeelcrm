@@ -49,7 +49,19 @@ export const leadSource = pgEnum('lead_source', [
   'referral',
   'affiliate',
   'repeat',
+  'direct',
+  'telegram',
+  'twitter',
+  'existing',
   'other',
+])
+
+// Inventory item lifecycle (spec §32).
+export const inventoryStatus = pgEnum('inventory_status', [
+  'available',
+  'reserved',
+  'sold',
+  'unavailable',
 ])
 
 export const orderStatus = pgEnum('order_status', [
@@ -454,6 +466,23 @@ export const products = pgTable('products', {
 })
 
 // ---------------------------------------------------------------------------
+// inventory_items — trackable stock for digital products (spec §32). Sensitive
+// credentials stay here, never exposed in Discord logs.
+// ---------------------------------------------------------------------------
+
+export const inventoryItems = pgTable('inventory_items', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  productId: uuid('product_id').references(() => products.id),
+  label: text('label').notNull(), // e.g. "USA Shop #A-102"
+  status: inventoryStatus('status').notNull().default('available'),
+  credentials: text('credentials'), // sensitive; admin-only
+  orderId: uuid('order_id').references(() => orders.id), // assigned deal, if any
+  notes: text('notes'),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+})
+
+// ---------------------------------------------------------------------------
 // Relations
 // ---------------------------------------------------------------------------
 
@@ -539,3 +568,4 @@ export type Setting = typeof settings.$inferSelect
 export type LeaderboardMonth = typeof leaderboardMonths.$inferSelect
 export type Product = typeof products.$inferSelect
 export type NewProduct = typeof products.$inferInsert
+export type InventoryItem = typeof inventoryItems.$inferSelect

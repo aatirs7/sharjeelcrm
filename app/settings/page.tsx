@@ -38,6 +38,23 @@ export default async function SettingsPage() {
       </div>
 
       <div className="space-y-3">
+        <SectionLabel>data export</SectionLabel>
+        <Card>
+          <CardContent className="flex flex-wrap gap-2 py-5 text-sm">
+            {['deals', 'customers', 'commissions', 'payouts'].map((t) => (
+              <a
+                key={t}
+                href={`/api/export?type=${t}`}
+                className="rounded-md border px-3 py-1.5 font-medium capitalize hover:bg-muted"
+              >
+                {t}.csv
+              </a>
+            ))}
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="space-y-3">
         <SectionLabel>monthly leaderboard rewards</SectionLabel>
         <Card>
           <CardContent className="py-5">

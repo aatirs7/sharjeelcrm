@@ -10,12 +10,15 @@ import { signOut } from "@/lib/actions/auth";
 
 const ADMIN_NAV = [
   { href: "/", label: "dashboard" },
+  { href: "/search", label: "search" },
   { href: "/tickets", label: "tickets" },
   { href: "/orders", label: "orders" },
   { href: "/revenue", label: "revenue" },
   { href: "/payouts", label: "payouts" },
   { href: "/coaches", label: "coaches" },
   { href: "/workers", label: "workers" },
+  { href: "/products", label: "products" },
+  { href: "/inventory", label: "inventory" },
   { href: "/leaderboard", label: "leaderboard" },
   { href: "/content", label: "content" },
   { href: "/tasks", label: "tasks" },
