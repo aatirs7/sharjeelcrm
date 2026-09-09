@@ -7,6 +7,22 @@ function affiliateChannel(): string | null {
   return process.env.AFFILIATE_CHANNEL_ID || null
 }
 
+// Private staff channel for sale/payment/refund notifications (spec §25).
+function adminChannel(): string | null {
+  return process.env.ADMIN_NOTIFY_CHANNEL_ID || process.env.STAFF_CHANNEL_ID || null
+}
+
+/** Post an event notification to the private admin channel. */
+export async function postAdminNotify(
+  title: string,
+  lines: string[],
+  color = 0x3b82f6
+): Promise<boolean> {
+  return postToChannel(adminChannel(), {
+    embeds: [{ title, description: lines.filter(Boolean).join('\n'), color }],
+  })
+}
+
 /** Announce a paid payout in the affiliates channel. */
 export async function postPayoutProof(input: {
   coachName: string

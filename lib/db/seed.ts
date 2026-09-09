@@ -169,14 +169,14 @@ async function main() {
     .values([
       { discordUsername: 'lead_ghost', source: 'discord', interest: 'Starter Shop', budgetCents: 20000, status: 'new_lead', assignedRepId: rep.id, lastContactAt: daysFromNow(-1) },
       { discordUsername: 'lead_raven', source: 'tiktok', interest: 'Growth Shop', budgetCents: 40000, status: 'contacted', assignedRepId: rep.id },
-      { discordUsername: 'lead_kilo', source: 'referral', interest: 'Premium Shop', budgetCents: 75000, status: 'ticket_opened', assignedRepId: rep.id, lastContactAt: daysFromNow(-2) },
-      { discordUsername: 'lead_juno', source: 'discord', interest: 'Starter Shop', budgetCents: 25000, status: 'interested', assignedRepId: admin.id },
-      { discordUsername: 'lead_vega', source: 'affiliate', interest: 'Growth Shop', budgetCents: 45000, status: 'invoice_sent', referralCode: 'ISHHY100', sourceCoachId: alpha.id, promoCodeUsed: 'ISHHY100', assignedRepId: rep.id, nextFollowUpAt: daysFromNow(1) },
-      { discordUsername: 'lead_orion', source: 'discord', interest: 'Premium Shop', budgetCents: 80000, status: 'invoice_sent', assignedRepId: rep.id, nextFollowUpAt: daysFromNow(1) },
-      { discordUsername: 'buyer_ace', source: 'discord', interest: 'Starter Shop', budgetCents: 25000, status: 'paid', assignedRepId: rep.id, lastContactAt: daysFromNow(-12) },
-      { discordUsername: 'buyer_neo', source: 'affiliate', interest: 'Starter Shop', budgetCents: 25000, status: 'paid', referralCode: 'TITAN15', sourceCoachId: beta.id, promoCodeUsed: 'TITAN15', assignedRepId: admin.id, lastContactAt: daysFromNow(-27) },
-      { discordUsername: 'lead_atlas', source: 'repeat', interest: 'Growth Shop', budgetCents: 45000, status: 'lost', assignedRepId: rep.id, notes: 'Went with a competitor.' },
-      { discordUsername: 'lead_nova', source: 'other', interest: 'Premium Shop', budgetCents: 90000, status: 'lost', assignedRepId: admin.id, notes: 'Budget fell through.' },
+      { discordUsername: 'lead_kilo', source: 'referral', interest: 'Premium Shop', budgetCents: 75000, status: 'contacted', assignedRepId: rep.id, lastContactAt: daysFromNow(-2) },
+      { discordUsername: 'lead_juno', source: 'discord', interest: 'Starter Shop', budgetCents: 25000, status: 'product_selected', assignedRepId: admin.id },
+      { discordUsername: 'lead_vega', source: 'affiliate', interest: 'Growth Shop', budgetCents: 45000, status: 'waiting_payment', referralCode: 'ISHHY100', sourceCoachId: alpha.id, promoCodeUsed: 'ISHHY100', assignedRepId: rep.id, nextFollowUpAt: daysFromNow(1) },
+      { discordUsername: 'lead_orion', source: 'discord', interest: 'Premium Shop', budgetCents: 80000, status: 'waiting_payment', assignedRepId: rep.id, nextFollowUpAt: daysFromNow(1) },
+      { discordUsername: 'buyer_ace', source: 'discord', interest: 'Starter Shop', budgetCents: 25000, status: 'completed', assignedRepId: rep.id, lastContactAt: daysFromNow(-12) },
+      { discordUsername: 'buyer_neo', source: 'affiliate', interest: 'Starter Shop', budgetCents: 25000, status: 'completed', referralCode: 'TITAN15', sourceCoachId: beta.id, promoCodeUsed: 'TITAN15', assignedRepId: admin.id, lastContactAt: daysFromNow(-27) },
+      { discordUsername: 'lead_atlas', source: 'repeat', interest: 'Growth Shop', budgetCents: 45000, status: 'cancelled', assignedRepId: rep.id, notes: 'Went with a competitor.' },
+      { discordUsername: 'lead_nova', source: 'other', interest: 'Premium Shop', budgetCents: 90000, status: 'cancelled', assignedRepId: admin.id, notes: 'Budget fell through.' },
     ])
     .returning()
 

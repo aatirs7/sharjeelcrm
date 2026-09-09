@@ -70,6 +70,7 @@ export default async function TicketsPage({
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead>Deal</TableHead>
               <TableHead>Discord</TableHead>
               <TableHead>Type</TableHead>
               <TableHead>Status</TableHead>
@@ -82,13 +83,18 @@ export default async function TicketsPage({
           <TableBody>
             {rows.length === 0 && (
               <TableRow>
-                <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
                   No tickets match these filters.
                 </TableCell>
               </TableRow>
             )}
             {rows.map((lead) => (
               <TableRow key={lead.id} className="cursor-pointer">
+                <TableCell className="whitespace-nowrap font-mono text-xs text-muted-foreground">
+                  <Link href={`/tickets/${lead.id}`} className="block hover:underline">
+                    DEAL-{lead.dealNumber}
+                  </Link>
+                </TableCell>
                 <TableCell className="font-medium">
                   <Link href={`/tickets/${lead.id}`} className="block hover:underline">
                     {lead.discordUsername}

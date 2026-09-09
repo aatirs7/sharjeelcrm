@@ -7,6 +7,7 @@ import { commissions, payouts, coaches } from '../db/schema'
 import { requireRep } from '../auth'
 import { recomputeCoachRollups } from '../automations'
 import { postPayoutProof } from '../discord-posts'
+import { logAudit } from '../audit'
 
 const DAY = 86_400_000
 
@@ -73,6 +74,14 @@ export async function payoutCoach(coachId: string, input: PayoutInput = {}): Pro
       ref: input.transactionRef,
     })
   }
+
+  await logAudit({
+    action: 'payout.paid',
+    entity: 'payout',
+    entityRef: payout.id.slice(0, 8),
+    summary: `Paid ${(totalCents / 100).toFixed(2)} to ${coach?.name ?? 'coach'} (${approved.length} commissions)`,
+    meta: { payoutId: payout.id, coachId, totalCents, method: input.method ?? null, ref: input.transactionRef ?? null },
+  })
 
   revalidatePath('/payouts')
   revalidatePath('/coaches')

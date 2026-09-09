@@ -5,6 +5,7 @@ import { recomputeCoachRollups } from './automations'
 import { tierForBuyers } from './money'
 import { getRefundSignals, type RefundSignal } from './stripe'
 import { assignMemberRole } from './discord'
+import { logAudit } from './audit'
 
 const DAY = 86_400_000
 
@@ -167,6 +168,17 @@ export async function sweepCommissions(): Promise<{
   }
 
   for (const coachId of touchedCoaches) await recomputeCoachRollups(coachId)
+  if (approved + cancelled + reversed > 0) {
+    await logAudit(
+      {
+        action: 'commission.sweep',
+        entity: 'commission',
+        summary: `Sweep: ${approved} approved, ${cancelled} cancelled, ${reversed} reversed`,
+        meta: { approved, cancelled, reversed },
+      },
+      { id: null, role: 'system' }
+    )
+  }
   return { approved, cancelled, reversed }
 }
 

@@ -1,4 +1,4 @@
-import { relations } from 'drizzle-orm'
+import { relations, sql } from 'drizzle-orm'
 import {
   pgEnum,
   pgTable,
@@ -9,21 +9,38 @@ import {
   timestamp,
   date,
   uuid,
+  jsonb,
   unique,
 } from 'drizzle-orm/pg-core'
+
+// Lost-deal reasons (spec §23), captured when a deal is cancelled.
+export const lostReason = pgEnum('lost_reason', [
+  'no_response',
+  'too_expensive',
+  'changed_mind',
+  'payment_problem',
+  'product_unavailable',
+  'bought_elsewhere',
+  'other',
+])
 
 // ---------------------------------------------------------------------------
 // Enums
 // ---------------------------------------------------------------------------
 
+// The deal pipeline (spec §6). A lead IS the deal — it carries the full
+// lifecycle. Commission is created when a deal reaches `completed`.
 export const leadStatus = pgEnum('lead_status', [
   'new_lead',
   'contacted',
-  'ticket_opened',
-  'interested',
-  'invoice_sent',
-  'paid',
-  'lost',
+  'product_selected',
+  'waiting_payment',
+  'payment_received',
+  'fulfillment',
+  'completed',
+  'cancelled',
+  'refunded',
+  'disputed',
 ])
 
 export const leadSource = pgEnum('lead_source', [
@@ -201,6 +218,12 @@ export const customers = pgTable(
 
 export const leads = pgTable('leads', {
   id: uuid('id').primaryKey().defaultRandom(),
+  // Human deal id: displayed as DEAL-<number>. Backed by a Postgres sequence
+  // starting at 10001 (see migration). Shared across CRM / Discord / records.
+  dealNumber: integer('deal_number')
+    .notNull()
+    .unique()
+    .default(sql`nextval('deal_number_seq'::regclass)`),
   discordUsername: text('discord_username').notNull(),
   discordUserId: text('discord_user_id'), // buyer's Discord user id (for role provisioning)
   ticketLink: text('ticket_link'),
@@ -216,6 +239,7 @@ export const leads = pgTable('leads', {
   interest: text('interest'),
   budgetCents: integer('budget_cents'),
   status: leadStatus('status').notNull().default('new_lead'),
+  lostReason: lostReason('lost_reason'), // set when cancelled (spec §23)
   assignedRepId: text('assigned_rep_id').references(() => reps.id),
   lastContactAt: timestamp('last_contact_at', { withTimezone: true }),
   nextFollowUpAt: timestamp('next_follow_up_at', { withTimezone: true }),
@@ -374,6 +398,22 @@ export const tasks = pgTable('tasks', {
 })
 
 // ---------------------------------------------------------------------------
+// audit_logs — every sensitive admin/worker action (spec §39). Append-only.
+// ---------------------------------------------------------------------------
+
+export const auditLogs = pgTable('audit_logs', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  actorId: text('actor_id'), // rep id, coach id, or null for 'system'
+  actorRole: text('actor_role'), // admin | worker | coach | system
+  action: text('action').notNull(), // e.g. 'deal.status', 'commission.approve', 'referral.change'
+  entity: text('entity'), // 'deal' | 'commission' | 'coach' | 'payout' | ...
+  entityRef: text('entity_ref'), // human ref, e.g. DEAL-10428
+  summary: text('summary').notNull(), // one-line human description
+  meta: jsonb('meta'), // { before, after, ... }
+  createdAt: createdAt(),
+})
+
+// ---------------------------------------------------------------------------
 // Relations
 // ---------------------------------------------------------------------------
 
@@ -454,3 +494,4 @@ export type NewPayout = typeof payouts.$inferInsert
 export type CoachContent = typeof coachContent.$inferSelect
 export type Task = typeof tasks.$inferSelect
 export type NewTask = typeof tasks.$inferInsert
+export type AuditLog = typeof auditLogs.$inferSelect

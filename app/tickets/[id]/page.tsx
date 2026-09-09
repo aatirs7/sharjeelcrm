@@ -36,7 +36,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
     db.select().from(coaches),
   ])
 
-  const isWon = lead.status === 'paid'
+  const isWon = lead.status === 'completed'
 
   return (
     <div className="space-y-6">
@@ -47,6 +47,9 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
         >
           ← tickets
         </Link>
+        <p className="font-mono text-xs uppercase tracking-[0.18em] text-muted-foreground">
+          DEAL-{lead.dealNumber}
+        </p>
         <div className="flex items-center gap-3">
           <h1 className="font-heading text-3xl font-semibold tracking-tight">
             {lead.discordUsername}

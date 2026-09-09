@@ -11,10 +11,13 @@ import {
   coaches,
   leadStatus,
   leadSource,
+  lostReason,
   paymentMethod,
 } from '../db/schema'
+import { logAudit } from '../audit'
+import { postAdminNotify } from '../discord-posts'
 import { requireRep } from '../auth'
-import { computeOrderMoney, commissionForSale } from '../money'
+import { computeOrderMoney, commissionForSale, formatCents } from '../money'
 import { syncOrderCommission } from '../commissions'
 import {
   createFollowUpTaskForLead,
@@ -96,19 +99,41 @@ export async function updateLeadFields(id: string, input: UpdateLeadInput): Prom
   revalidatePath(`/tickets/${id}`)
 }
 
+type LostReasonValue = (typeof lostReason.enumValues)[number]
+
 /**
- * Move a lead through the pre-payment machine. `paid` is intentionally NOT
- * settable here — reaching `paid` happens via convertLeadToOrder, which also
- * creates the order. Fires rule 2 when entering `invoice_sent`.
+ * Move a deal through the pipeline (spec §6). `completed` is intentionally NOT
+ * settable here — reaching it happens via convertLeadToOrder, which records the
+ * sale and fires the commission. A `cancelled` move can carry a lost reason.
+ * Fires a follow-up task when entering `waiting_payment`.
  */
 export async function setLeadStatus(
   id: string,
-  status: Exclude<LeadStatusValue, 'paid'>
+  status: Exclude<LeadStatusValue, 'completed'>,
+  lostReasonValue?: LostReasonValue | null
 ): Promise<void> {
   await requireRep()
-  await db.update(leads).set({ status }).where(eq(leads.id, id))
-  if (status === 'invoice_sent') {
+  const before = await db.query.leads.findFirst({ where: eq(leads.id, id) })
+  await db
+    .update(leads)
+    .set({ status, lostReason: status === 'cancelled' ? lostReasonValue ?? null : null })
+    .where(eq(leads.id, id))
+  if (status === 'waiting_payment') {
     await createFollowUpTaskForLead(id)
+  }
+  await logAudit({
+    action: 'deal.status',
+    entity: 'deal',
+    entityRef: before ? `DEAL-${before.dealNumber}` : null,
+    summary: `Deal status ${before?.status ?? '?'} → ${status}${lostReasonValue ? ` (${lostReasonValue})` : ''}`,
+    meta: { from: before?.status, to: status, lostReason: lostReasonValue ?? null },
+  })
+  if (status === 'refunded' || status === 'disputed') {
+    await postAdminNotify(
+      status === 'refunded' ? '↩️ Refund' : '⚠️ Dispute',
+      [`Deal: DEAL-${before?.dealNumber}`, `Customer: ${before?.discordUsername}`],
+      0xf43f5e
+    )
   }
   revalidatePath('/tickets')
   revalidatePath(`/tickets/${id}`)
@@ -186,11 +211,33 @@ export async function convertLeadToOrder(id: string, input: ConvertLeadInput): P
     })
     .returning()
 
-  await db.update(leads).set({ status: 'paid' }).where(eq(leads.id, id))
+  // Recording the sale completes the deal; that is what fires the commission.
+  await db.update(leads).set({ status: 'completed' }).where(eq(leads.id, id))
 
   await createDeliveryTaskForOrder(order.id) // rule 3
-  await syncOrderCommission(order.id) // create the pending commission (M3)
+  await syncOrderCommission(order.id) // create the pending commission at completed (§12)
   await recomputeOrderRollups(order.id) // rules 7 & 8
+
+  await logAudit({
+    action: 'deal.completed',
+    entity: 'deal',
+    entityRef: `DEAL-${lead.dealNumber}`,
+    summary: `Deal completed: ${input.package.trim()} for ${formatCents(priceCents)}${coach ? ` (coach ${coach.name})` : ''}`,
+    meta: { orderId: order.id, priceCents, coachId },
+  })
+
+  // Notify the private admin channel of the new sale (spec §25).
+  await postAdminNotify(
+    '💰 New sale',
+    [
+      `Deal: DEAL-${lead.dealNumber}`,
+      `Customer: ${lead.discordUsername}`,
+      `Product: ${input.package.trim()}`,
+      `Amount: ${formatCents(priceCents)}`,
+      coach ? `Referrer: ${coach.name} (${formatCents(commissionCents)} commission)` : 'Referrer: none',
+    ],
+    0x22c55e
+  )
 
   revalidatePath('/tickets')
   revalidatePath(`/tickets/${id}`)

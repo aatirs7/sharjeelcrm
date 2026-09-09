@@ -8,6 +8,7 @@ import { coaches, coachTier, coachStatus } from '../db/schema'
 import { requireRep } from '../auth'
 import { recomputeCoachRollups } from '../automations'
 import { hashLoginCode } from '../session'
+import { logAudit } from '../audit'
 
 type Tier = (typeof coachTier.enumValues)[number]
 type Status = (typeof coachStatus.enumValues)[number]
@@ -89,7 +90,15 @@ export async function updateCoach(id: string, input: Partial<CoachInput>): Promi
 
 export async function setCoachStatus(id: string, status: Status): Promise<void> {
   await requireRep()
+  const coach = await db.query.coaches.findFirst({ where: eq(coaches.id, id) })
   await db.update(coaches).set({ status }).where(eq(coaches.id, id))
+  await logAudit({
+    action: 'coach.status',
+    entity: 'coach',
+    entityRef: coach?.name ?? id.slice(0, 8),
+    summary: `Coach ${coach?.name ?? ''} status → ${status}`,
+    meta: { coachId: id, from: coach?.status, to: status },
+  })
   revalidatePath('/coaches')
 }
 
@@ -101,6 +110,13 @@ export async function generateLoginCode(id: string): Promise<string> {
   await requireRep()
   const code = randomBytes(5).toString('hex').toUpperCase() // 10 hex chars
   await db.update(coaches).set({ loginCodeHash: hashLoginCode(code) }).where(eq(coaches.id, id))
+  await logAudit({
+    action: 'coach.login_code',
+    entity: 'coach',
+    entityRef: id.slice(0, 8),
+    summary: 'Generated/rotated a coach login code',
+    meta: { coachId: id },
+  })
   revalidatePath('/coaches')
   return code
 }

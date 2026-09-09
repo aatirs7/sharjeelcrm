@@ -7,6 +7,7 @@ import { orders, coaches, leads, orderStatus, paymentStatus, paymentMethod } fro
 import { requireRep } from '../auth'
 import { computeOrderMoney, commissionForSale } from '../money'
 import { syncOrderCommission } from '../commissions'
+import { logAudit } from '../audit'
 import {
   createDeliveryFollowupTasks,
   autoCompleteProofTask,
@@ -108,6 +109,15 @@ export async function assignOrderCoach(id: string, coachId: string | null): Prom
   await syncOrderCommission(id) // create/refresh/cancel the commission for the new coach
   if (previousCoachId && previousCoachId !== coach?.id) await recomputeCoachRollups(previousCoachId)
   if (coach) await recomputeCoachRollups(coach.id)
+
+  await logAudit({
+    action: 'referral.change',
+    entity: 'order',
+    entityRef: id.slice(0, 8),
+    summary: `Referral coach ${previousCoachId ? 'changed' : 'set'} to ${coach?.name ?? 'unattributed'}`,
+    meta: { orderId: id, from: previousCoachId, to: coach?.id ?? null },
+  })
+
   revalidateOrder(id)
   revalidatePath('/coaches')
 }

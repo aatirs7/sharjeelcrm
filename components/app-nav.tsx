@@ -20,6 +20,7 @@ const ADMIN_NAV = [
   { href: "/tasks", label: "tasks" },
   { href: "/customers", label: "customers" },
   { href: "/issues", label: "issues" },
+  { href: "/audit", label: "audit" },
 ];
 
 const COACH_NAV = [{ href: "/coach", label: "dashboard" }];
