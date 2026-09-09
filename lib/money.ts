@@ -26,16 +26,16 @@ export const PROFIT_PCT = `${Math.round(PROFIT_SHARE * 100)}%`
 // ---------------------------------------------------------------------------
 // Commission seam
 // ---------------------------------------------------------------------------
-// The commission AMOUNT lives behind this one function so switching the model
-// later (percent-of-price -> flat-per-buyer by tier) is a one-line change.
-//
-// TODO(sharjeel): flip COMMISSION_MODE to 'flat' and confirm TIER_RATE_CENTS
-// once the flat model is approved. Nothing downstream changes; every consumer
-// reads commissionForSale()'s output and is agnostic to the mode.
+// The commission AMOUNT lives behind this one function so the model is a
+// one-line change. CONFIRMED (spec §12): flat $100 per completed referred sale
+// for every coach. Tiers stay for the leaderboard/roles only; per §18, tiered
+// commission amounts are a future change (flip to per-tier TIER_RATE_CENTS).
 
 export type CoachTier = 'bronze' | 'silver' | 'gold'
-export const COMMISSION_MODE: 'percent' | 'flat' = 'percent'
-/** Dormant until COMMISSION_MODE === 'flat'. 100 / 125 / 150 dollars. */
+export const COMMISSION_MODE: 'percent' | 'flat' = 'flat'
+/** Flat commission per completed referred sale (spec §12). */
+export const FLAT_COMMISSION_CENTS = 10000 // $100
+/** Future per-tier amounts (dormant; §18). Used only if the flat-for-all rule changes. */
 export const TIER_RATE_CENTS: Record<CoachTier, number> = {
   bronze: 10000,
   silver: 12500,
@@ -67,15 +67,15 @@ export interface CommissionCoach {
 }
 
 /**
- * The commission a coach earns on one sale, in cents.
- * - percent mode (current): round(priceCents * coach.commissionRate)
- * - flat mode (dormant):    TIER_RATE_CENTS[coach.tier]
+ * The commission a coach earns on one completed referred sale, in cents.
+ * - flat mode (current): FLAT_COMMISSION_CENTS ($100) for every coach (§12).
+ * - percent mode (legacy): round(priceCents * coach.commissionRate).
  * A missing coach earns nothing.
  */
 export function commissionForSale(priceCents: number, coach: CommissionCoach | null | undefined): number {
   if (!coach) return 0
   if (COMMISSION_MODE === 'flat') {
-    return TIER_RATE_CENTS[(coach.tier ?? 'bronze') as CoachTier]
+    return FLAT_COMMISSION_CENTS
   }
   const rate = coach.commissionRate == null ? 0 : Number(coach.commissionRate)
   return rate > 0 ? Math.round(priceCents * rate) : 0

@@ -50,6 +50,13 @@
       "when": 1786567292160,
       "tag": "0006_quick_cobalt_man",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1788922503093,
+      "tag": "0007_romantic_jocasta",
+      "breakpoints": true
     }
   ]
 }

@@ -1,3 +1,6 @@
+import { and, eq } from 'drizzle-orm'
+import { db } from '@/lib/db'
+import { commissions, coaches as coachesTable } from '@/lib/db/schema'
 import { getPayoutSummary } from '@/lib/queries/payouts'
 import { formatCents } from '@/lib/money'
 import { titleCase } from '@/lib/labels'
@@ -22,6 +25,18 @@ export default async function PayoutsPage() {
   const { coaches, history } = await getPayoutSummary()
   const totalPayable = coaches.reduce((s, c) => s + c.pendingCents, 0)
 
+  // Paid commissions later reversed by a refund/dispute — money went out, needs review.
+  const reviews = await db
+    .select({
+      id: commissions.id,
+      amountCents: commissions.amountCents,
+      reason: commissions.cancelReason,
+      coachName: coachesTable.name,
+    })
+    .from(commissions)
+    .leftJoin(coachesTable, eq(commissions.coachId, coachesTable.id))
+    .where(and(eq(commissions.status, 'reversed'), eq(commissions.needsReview, true)))
+
   return (
     <div className="space-y-8">
       <PageHeader
@@ -29,6 +44,20 @@ export default async function PayoutsPage() {
         title="Payouts"
         meta={`${formatCents(totalPayable)} payable now`}
       />
+
+      {reviews.length > 0 && (
+        <div className="rounded-xl border border-rose-300 bg-rose-50 p-4 text-sm dark:border-rose-900 dark:bg-rose-950/40">
+          <p className="font-medium text-rose-700 dark:text-rose-300">
+            {reviews.length} paid commission{reviews.length === 1 ? '' : 's'} reversed — needs review
+          </p>
+          <p className="mt-1 text-rose-600/90 dark:text-rose-300/80">
+            These were already paid out, then the sale was refunded or disputed. Claw back manually:{' '}
+            {reviews
+              .map((r) => `${r.coachName ?? '—'} ${formatCents(r.amountCents)} (${r.reason ?? 'refund'})`)
+              .join(' · ')}
+          </p>
+        </div>
+      )}
 
       {/* Coaches — approved (payable), held, paid */}
       <div className="space-y-3">

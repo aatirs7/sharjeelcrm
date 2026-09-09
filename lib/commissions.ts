@@ -83,13 +83,19 @@ function refundMatch(
  *  - else if a pending commission has passed its eligibility date, approve it,
  *    freezing the coach's tier and the amount.
  */
-export async function sweepCommissions(): Promise<{ approved: number; cancelled: number }> {
+export async function sweepCommissions(): Promise<{
+  approved: number
+  cancelled: number
+  reversed: number
+}> {
   const now = new Date()
+  // pending/approved can still be cancelled cleanly; paid ones can only be
+  // reversed (money already went out) and flagged for admin review.
   const open = await db
     .select()
     .from(commissions)
-    .where(inArray(commissions.status, ['pending', 'approved']))
-  if (open.length === 0) return { approved: 0, cancelled: 0 }
+    .where(inArray(commissions.status, ['pending', 'approved', 'paid']))
+  if (open.length === 0) return { approved: 0, cancelled: 0, reversed: 0 }
 
   const orderIds = [...new Set(open.map((c) => c.orderId))]
   const orderRows = await db.select().from(orders).where(inArray(orders.id, orderIds))
@@ -105,6 +111,7 @@ export async function sweepCommissions(): Promise<{ approved: number; cancelled:
   const touchedCoaches = new Set<string>()
   let approved = 0
   let cancelled = 0
+  let reversed = 0
 
   for (const c of open) {
     const order = orderById.get(c.orderId)
@@ -119,12 +126,22 @@ export async function sweepCommissions(): Promise<{ approved: number; cancelled:
           : refundMatch(order, email, signals)
 
     if (reason) {
-      await db
-        .update(commissions)
-        .set({ status: 'cancelled', cancelledAt: now, cancelReason: reason })
-        .where(eq(commissions.id, c.id))
-      touchedCoaches.add(c.coachId)
-      cancelled++
+      if (c.status === 'paid') {
+        // Money already paid out -> reverse + flag for manual admin review (§13).
+        await db
+          .update(commissions)
+          .set({ status: 'reversed', cancelledAt: now, cancelReason: reason, needsReview: true })
+          .where(eq(commissions.id, c.id))
+        touchedCoaches.add(c.coachId)
+        reversed++
+      } else {
+        await db
+          .update(commissions)
+          .set({ status: 'cancelled', cancelledAt: now, cancelReason: reason })
+          .where(eq(commissions.id, c.id))
+        touchedCoaches.add(c.coachId)
+        cancelled++
+      }
       continue
     }
 
@@ -150,7 +167,7 @@ export async function sweepCommissions(): Promise<{ approved: number; cancelled:
   }
 
   for (const coachId of touchedCoaches) await recomputeCoachRollups(coachId)
-  return { approved, cancelled }
+  return { approved, cancelled, reversed }
 }
 
 /**

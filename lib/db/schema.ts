@@ -110,6 +110,7 @@ export const commissionStatus = pgEnum('commission_status', [
   'approved',
   'paid',
   'cancelled',
+  'reversed', // an already-paid commission whose sale was later refunded/disputed
 ])
 export const payoutStatus = pgEnum('payout_status', ['pending', 'paid'])
 
@@ -305,6 +306,9 @@ export const commissions = pgTable('commissions', {
   paidAt: timestamp('paid_at', { withTimezone: true }),
   cancelledAt: timestamp('cancelled_at', { withTimezone: true }),
   cancelReason: text('cancel_reason'), // 'refund' | 'chargeback'
+  // Set when a PAID commission is reversed by a later refund/dispute — the money
+  // already went out, so an admin must review/claw back (spec §13).
+  needsReview: boolean('needs_review').notNull().default(false),
   tierAtApproval: coachTier('tier_at_approval'), // snapshot
   payoutId: uuid('payout_id').references(() => payouts.id),
   createdAt: createdAt(),

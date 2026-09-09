@@ -64,6 +64,7 @@ async function handle(req: Request): Promise<NextResponse> {
     overdueTasks: overdueRow[0]?.n ?? 0,
     commissionsApproved: commissionSweep.approved,
     commissionsCancelled: commissionSweep.cancelled,
+    commissionsReversed: commissionSweep.reversed,
     tiersChanged,
     leaderboardPosted,
     ticketChannelsEligible: ticketCleanup.eligible,
