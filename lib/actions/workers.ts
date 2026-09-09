@@ -22,6 +22,7 @@ export interface WorkerInput {
   displayName: string
   email?: string | null
   role?: 'admin' | 'manager' | 'worker'
+  discordUserId?: string | null
 }
 
 /** Admin: create a worker (or admin) account. */
@@ -34,6 +35,7 @@ export async function createWorker(input: WorkerInput): Promise<string> {
     displayName: input.displayName.trim(),
     email: input.email?.trim() || null,
     role,
+    discordUserId: input.discordUserId?.trim() || null,
   })
   await logAudit({
     action: 'worker.create',

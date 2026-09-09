@@ -35,13 +35,14 @@ export function AddWorkerDialog() {
   const [pending, startTransition] = useTransition()
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
+  const [discordId, setDiscordId] = useState('')
   const [role, setRole] = useState<'admin' | 'manager' | 'worker'>('worker')
 
   function submit() {
     if (!name.trim()) return toast.error('Name is required')
     startTransition(async () => {
       try {
-        await createWorker({ displayName: name, email: email || null, role })
+        await createWorker({ displayName: name, email: email || null, role, discordUserId: discordId || null })
         toast.success('Worker added')
         setOpen(false)
         setName('')
@@ -68,6 +69,10 @@ export function AddWorkerDialog() {
           <div className="space-y-1.5">
             <Label htmlFor="w-email">Email</Label>
             <Input id="w-email" value={email} onChange={(e) => setEmail(e.target.value)} />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="w-discord">Discord user id (for Login with Discord)</Label>
+            <Input id="w-discord" value={discordId} onChange={(e) => setDiscordId(e.target.value)} placeholder="optional" />
           </div>
           <div className="space-y-1.5">
             <Label>Role</Label>
