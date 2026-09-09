@@ -15,6 +15,7 @@ const ADMIN_NAV = [
   { href: "/revenue", label: "revenue" },
   { href: "/payouts", label: "payouts" },
   { href: "/coaches", label: "coaches" },
+  { href: "/workers", label: "workers" },
   { href: "/leaderboard", label: "leaderboard" },
   { href: "/content", label: "content" },
   { href: "/tasks", label: "tasks" },
@@ -25,14 +26,22 @@ const ADMIN_NAV = [
 
 const COACH_NAV = [{ href: "/coach", label: "dashboard" }];
 
+const WORKER_NAV = [
+  { href: "/tickets", label: "deals" },
+  { href: "/orders", label: "orders" },
+  { href: "/customers", label: "customers" },
+  { href: "/tasks", label: "tasks" },
+  { href: "/me", label: "my performance" },
+];
+
 function isActive(pathname: string, href: string) {
   return href === "/" ? pathname === "/" : pathname.startsWith(href);
 }
 
-export function AppNav({ role = "admin" }: { role?: "admin" | "coach" }) {
+export function AppNav({ role = "admin" }: { role?: "admin" | "coach" | "worker" }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
-  const NAV = role === "coach" ? COACH_NAV : ADMIN_NAV;
+  const NAV = role === "coach" ? COACH_NAV : role === "worker" ? WORKER_NAV : ADMIN_NAV;
 
   // Close the mobile menu on navigation.
   // eslint-disable-next-line react-hooks/set-state-in-effect

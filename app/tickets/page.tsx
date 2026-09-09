@@ -20,6 +20,7 @@ import { LeadsFilters } from '@/components/leads/leads-filters'
 import { LeadQuickAdd } from '@/components/leads/lead-quick-add'
 import { TicketTypeTabs } from '@/components/tickets/type-tabs'
 import { PageHeader } from '@/components/page-header'
+import { getSession } from '@/lib/auth'
 
 function fmtCreated(d: Date | string) {
   return new Date(d).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })
@@ -31,6 +32,8 @@ export default async function TicketsPage({
   searchParams: Promise<{ status?: string; rep?: string; code?: string; type?: string }>
 }) {
   const { status, rep, code, type } = await searchParams
+  const session = await getSession()
+  const isWorker = session?.role === 'worker'
 
   const conditions = []
   if (status && leadStatusEnum.enumValues.includes(status as never)) {
@@ -39,7 +42,9 @@ export default async function TicketsPage({
   if (type && ticketTypeEnum.enumValues.includes(type as never)) {
     conditions.push(eq(leads.ticketType, type as (typeof ticketTypeEnum.enumValues)[number]))
   }
-  if (rep) conditions.push(eq(leads.assignedRepId, rep))
+  // Workers see only their own deals (spec §2/§45).
+  if (isWorker && session?.repId) conditions.push(eq(leads.assignedRepId, session.repId))
+  else if (rep) conditions.push(eq(leads.assignedRepId, rep))
   if (code) conditions.push(ilike(leads.referralCode, `%${code}%`))
 
   const [rows, repList] = await Promise.all([

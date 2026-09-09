@@ -4,7 +4,7 @@ import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { and, eq } from 'drizzle-orm'
 import { db } from '../db'
-import { coaches } from '../db/schema'
+import { coaches, reps } from '../db/schema'
 import { isCorrectPin, PIN_COOKIE, PIN_MAX_AGE } from '../pin'
 import { mintSession, hashLoginCode } from '../session'
 
@@ -41,9 +41,20 @@ export async function submitPin(_prev: PinState, formData: FormData): Promise<Pi
     redirect(next.startsWith('/') && !next.startsWith('//') ? next : '/')
   }
 
+  const codeHash = hashLoginCode(input)
+
+  // Worker login code (active workers).
+  const worker = await db.query.reps.findFirst({
+    where: and(eq(reps.loginCodeHash, codeHash), eq(reps.active, true)),
+  })
+  if (worker) {
+    setSessionCookie(jar, mintSession('worker', worker.id))
+    redirect('/tickets')
+  }
+
   // Coach login code (HMAC lookup, active coaches only).
   const coach = await db.query.coaches.findFirst({
-    where: and(eq(coaches.loginCodeHash, hashLoginCode(input)), eq(coaches.status, 'active')),
+    where: and(eq(coaches.loginCodeHash, codeHash), eq(coaches.status, 'active')),
   })
   if (coach) {
     setSessionCookie(jar, mintSession('coach', coach.id))

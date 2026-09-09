@@ -33,6 +33,15 @@ export function proxy(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
+  // Workers handle deals only — no money/coach/admin areas or owner analytics.
+  const WORKER_ALLOWED = ['/tickets', '/orders', '/customers', '/tasks', '/me']
+  if (session.role === 'worker' && !WORKER_ALLOWED.some((p) => pathname === p || pathname.startsWith(p + '/'))) {
+    const url = request.nextUrl.clone()
+    url.pathname = '/tickets'
+    url.search = ''
+    return NextResponse.redirect(url)
+  }
+
   return NextResponse.next()
 }
 

@@ -86,7 +86,7 @@ const STEPS: Step[] = [
   },
 ]
 
-export function WhatsNew({ role = 'admin' }: { role?: 'admin' | 'coach' }) {
+export function WhatsNew({ role = 'admin' }: { role?: 'admin' | 'coach' | 'worker' }) {
   const pathname = usePathname()
   const [open, setOpen] = useState(false)
   const [i, setI] = useState(0)

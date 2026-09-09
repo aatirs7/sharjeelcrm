@@ -8,15 +8,17 @@ export { PIN_COOKIE, PIN_MAX_AGE }
  * A legacy PIN-only cookie (single hex string, no colons) is still accepted as
  * an admin session so existing logins survive the upgrade.
  */
-export type Role = 'admin' | 'coach'
+export type Role = 'admin' | 'coach' | 'worker'
 
 export interface Session {
   role: Role
-  coachId: string | null
+  coachId: string | null // set when role === 'coach'
+  repId: string | null // set when role === 'worker'
 }
 
-export function mintSession(role: Role, coachId: string | null): string {
-  const payload = `${role}:${coachId ?? ''}`
+/** subjectId is the coach id (coach) or worker rep id (worker); '' for admin. */
+export function mintSession(role: Role, subjectId: string | null): string {
+  const payload = `${role}:${subjectId ?? ''}`
   return `${payload}:${signValue(payload)}`
 }
 
@@ -25,14 +27,18 @@ export function parseSession(token: string | undefined): Session | null {
   const parts = token.split(':')
   // Legacy admin cookie: a single HMAC of the PIN, no role prefix.
   if (parts.length === 1) {
-    return isValidSession(token) ? { role: 'admin', coachId: null } : null
+    return isValidSession(token) ? { role: 'admin', coachId: null, repId: null } : null
   }
   if (parts.length !== 3) return null
-  const [role, coachId, sig] = parts
-  if (role !== 'admin' && role !== 'coach') return null
-  const payload = `${role}:${coachId}`
+  const [role, subjectId, sig] = parts
+  if (role !== 'admin' && role !== 'coach' && role !== 'worker') return null
+  const payload = `${role}:${subjectId}`
   if (!equals(sig, signValue(payload))) return null
-  return { role, coachId: coachId || null }
+  return {
+    role,
+    coachId: role === 'coach' ? subjectId || null : null,
+    repId: role === 'worker' ? subjectId || null : null,
+  }
 }
 
 /** Hash a coach login code for storage/comparison (never store the code plain). */

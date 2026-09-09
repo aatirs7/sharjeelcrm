@@ -150,8 +150,11 @@ export const reps = pgTable('reps', {
   id: text('id').primaryKey(),
   displayName: text('display_name'),
   email: text('email'),
-  // 'admin' | 'rep'. admin sees payouts + profit, rep does not.
-  role: text('role').notNull().default('rep'),
+  // 'admin' | 'worker'. admin sees money/coaches; workers handle deals only.
+  role: text('role').notNull().default('worker'),
+  active: boolean('active').notNull().default(true),
+  discordUserId: text('discord_user_id'), // maps a Discord user to this worker (Claim)
+  loginCodeHash: text('login_code_hash'), // HMAC of the worker's login code
   createdAt: createdAt(),
 })
 

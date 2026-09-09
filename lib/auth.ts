@@ -5,11 +5,12 @@ import { reps, type Rep } from './db/schema'
 import { PIN_COOKIE, parseSession, type Session } from './session'
 
 // ---------------------------------------------------------------------------
-// Identity comes from the HMAC-signed session cookie (see lib/session.ts):
-//  - admin  -> the single local admin rep; sees everything.
-//  - coach  -> scoped to their own coach_id; read-only dashboards only.
-// Server actions that mutate call requireRep(), which now asserts admin, so a
-// coach session can never drive an admin mutation even if it reaches the action.
+// Identity from the HMAC-signed session cookie (lib/session.ts):
+//  - admin  -> the local admin rep; sees everything.
+//  - worker -> a reps row; handles deals only (no money/coach admin).
+//  - coach  -> scoped to their own coach_id; read-only dashboards.
+// Guards: requireStaff() = admin or worker (deal mutations); requireAdmin() =
+// admin only (money, coaches, payouts, content).
 // ---------------------------------------------------------------------------
 
 const LOCAL_REP_ID = 'local_admin'
@@ -22,11 +23,9 @@ async function ensureLocalRep(): Promise<Rep> {
     .values({ id: LOCAL_REP_ID, displayName: 'Admin', role: 'admin' })
     .onConflictDoNothing()
     .returning()
-  // onConflictDoNothing returns [] on a race; re-read in that case.
   return created ?? (await db.query.reps.findFirst({ where: eq(reps.id, LOCAL_REP_ID) }))!
 }
 
-/** The current session (role + coachId) from the cookie, or null. */
 export async function getSession(): Promise<Session | null> {
   const jar = await cookies()
   return parseSession(jar.get(PIN_COOKIE)?.value)
@@ -36,28 +35,38 @@ export async function isAdmin(): Promise<boolean> {
   return (await getSession())?.role === 'admin'
 }
 
+export async function isWorker(): Promise<boolean> {
+  return (await getSession())?.role === 'worker'
+}
+
 /** The signed-in coach's id, or null when the session is not a coach. */
 export async function getCurrentCoachId(): Promise<string | null> {
   const s = await getSession()
   return s?.role === 'coach' ? s.coachId : null
 }
 
-/** For admin pages: the local admin rep (display name + task inbox owner). */
+/** The acting rep (admin -> local admin rep; worker -> their rep row), else null. */
 export async function getCurrentRep(): Promise<Rep | null> {
-  if (!(await isAdmin())) return null
-  return ensureLocalRep()
+  const s = await getSession()
+  if (s?.role === 'admin') return ensureLocalRep()
+  if (s?.role === 'worker' && s.repId) {
+    return (await db.query.reps.findFirst({ where: eq(reps.id, s.repId) })) ?? null
+  }
+  return null
 }
 
-/**
- * Guard for every mutating server action. Asserts an admin session, then returns
- * the local admin rep. Throws for coach/anonymous sessions (defense in depth on
- * top of the proxy).
- */
-export async function requireRep(): Promise<Rep> {
+/** Guard for deal/ticket mutations — admin or worker. Returns the acting rep. */
+export async function requireStaff(): Promise<Rep> {
+  const rep = await getCurrentRep()
+  if (!rep) throw new Error('Forbidden: staff session required')
+  return rep
+}
+
+/** Guard for money/coach/admin mutations — admin only. */
+export async function requireAdmin(): Promise<Rep> {
   if (!(await isAdmin())) throw new Error('Forbidden: admin session required')
   return ensureLocalRep()
 }
 
-export async function requireAdmin(): Promise<Rep> {
-  return requireRep()
-}
+// Back-compat alias: existing deal/ticket actions call requireRep().
+export const requireRep = requireStaff

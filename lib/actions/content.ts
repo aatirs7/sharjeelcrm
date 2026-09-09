@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { eq } from 'drizzle-orm'
 import { db } from '../db'
 import { coachContent } from '../db/schema'
-import { requireRep } from '../auth'
+import { requireAdmin } from '../auth'
 
 const toInt = (v: number | string | null | undefined): number => {
   if (v == null || v === '') return 0
@@ -25,7 +25,7 @@ export interface ContentInput {
 }
 
 export async function createContent(input: ContentInput): Promise<string> {
-  await requireRep()
+  await requireAdmin()
   const revenueCents = Math.round((Number(input.revenueDollars) || 0) * 100)
   const [row] = await db
     .insert(coachContent)
@@ -46,7 +46,7 @@ export async function createContent(input: ContentInput): Promise<string> {
 }
 
 export async function deleteContent(id: string): Promise<void> {
-  await requireRep()
+  await requireAdmin()
   await db.delete(coachContent).where(eq(coachContent.id, id))
   revalidatePath('/content')
 }

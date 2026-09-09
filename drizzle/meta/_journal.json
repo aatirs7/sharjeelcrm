@@ -64,6 +64,13 @@
       "when": 1788965604713,
       "tag": "0008_gifted_sentinel",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1788966164969,
+      "tag": "0009_moaning_vulture",
+      "breakpoints": true
     }
   ]
 }

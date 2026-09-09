@@ -5,7 +5,7 @@ import { revalidatePath } from 'next/cache'
 import { eq } from 'drizzle-orm'
 import { db } from '../db'
 import { coaches, coachTier, coachStatus } from '../db/schema'
-import { requireRep } from '../auth'
+import { requireAdmin } from '../auth'
 import { recomputeCoachRollups } from '../automations'
 import { hashLoginCode } from '../session'
 import { logAudit } from '../audit'
@@ -44,7 +44,7 @@ function slugify(name: string): string {
 }
 
 export async function createCoach(input: CoachInput): Promise<string> {
-  await requireRep()
+  await requireAdmin()
   const rate = percentToRate(input.commissionRatePercent)
   const [row] = await db
     .insert(coaches)
@@ -68,7 +68,7 @@ export async function createCoach(input: CoachInput): Promise<string> {
 }
 
 export async function updateCoach(id: string, input: Partial<CoachInput>): Promise<void> {
-  await requireRep()
+  await requireAdmin()
   const patch: Partial<typeof coaches.$inferInsert> = {}
   if (input.name !== undefined) patch.name = input.name.trim()
   if (input.coachCode !== undefined) patch.coachCode = input.coachCode?.trim() || null
@@ -89,7 +89,7 @@ export async function updateCoach(id: string, input: Partial<CoachInput>): Promi
 }
 
 export async function setCoachStatus(id: string, status: Status): Promise<void> {
-  await requireRep()
+  await requireAdmin()
   const coach = await db.query.coaches.findFirst({ where: eq(coaches.id, id) })
   await db.update(coaches).set({ status }).where(eq(coaches.id, id))
   await logAudit({
@@ -107,7 +107,7 @@ export async function setCoachStatus(id: string, status: Status): Promise<void> 
  * the admin ONCE — only its HMAC is stored, so it can never be read back later.
  */
 export async function generateLoginCode(id: string): Promise<string> {
-  await requireRep()
+  await requireAdmin()
   const code = randomBytes(5).toString('hex').toUpperCase() // 10 hex chars
   await db.update(coaches).set({ loginCodeHash: hashLoginCode(code) }).where(eq(coaches.id, id))
   await logAudit({

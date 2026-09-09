@@ -12,6 +12,7 @@ import { LeadStatusChanger } from '@/components/leads/lead-status-changer'
 import { LeadNotes } from '@/components/leads/lead-notes'
 import { LeadEmail } from '@/components/leads/lead-email'
 import { ConvertToOrderDialog } from '@/components/leads/convert-to-order-dialog'
+import { ClaimButton } from '@/components/workers/claim-button'
 
 function Field({ label, value }: { label: string; value: React.ReactNode }) {
   return (
@@ -132,8 +133,15 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
               }
             />
             <Field
-              label="Assigned rep"
-              value={lead.assignedRep?.displayName ?? lead.assignedRep?.email ?? '—'}
+              label="Assigned worker"
+              value={
+                <span className="flex items-center gap-2">
+                  {lead.assignedRep?.displayName ?? lead.assignedRep?.email ?? (
+                    <span className="text-muted-foreground">unclaimed</span>
+                  )}
+                  <ClaimButton leadId={lead.id} assigned={lead.assignedRepId} />
+                </span>
+              }
             />
             <Field label="Created" value={new Date(lead.createdAt).toLocaleDateString()} />
             <Separator className="my-3" />

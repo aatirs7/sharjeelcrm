@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { and, eq, isNull } from 'drizzle-orm'
 import { db } from '../db'
 import { commissions, payouts, coaches } from '../db/schema'
-import { requireRep } from '../auth'
+import { requireAdmin } from '../auth'
 import { recomputeCoachRollups } from '../automations'
 import { postPayoutProof } from '../discord-posts'
 import { logAudit } from '../audit'
@@ -24,7 +24,7 @@ export interface PayoutInput {
  * (or null when there is nothing to pay).
  */
 export async function payoutCoach(coachId: string, input: PayoutInput = {}): Promise<string | null> {
-  await requireRep()
+  await requireAdmin()
 
   const approved = await db
     .select()
