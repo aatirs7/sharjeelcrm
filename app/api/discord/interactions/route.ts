@@ -3,6 +3,7 @@ import crypto from 'node:crypto'
 import { applyTicketTag, type TicketTag } from '@/lib/ticket-tag'
 import { createTicketChannel, postToChannel } from '@/lib/discord'
 import { ingestTicketLead } from '@/lib/leads-ingest'
+import { postAdminNotify } from '@/lib/discord-posts'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -98,6 +99,11 @@ export async function POST(req: Request): Promise<NextResponse> {
         ticketType: cfg.ticketType,
         routeCategory: cfg.route,
       })
+      await postAdminNotify(
+        '🎫 New ticket',
+        [`Type: ${cfg.label}`, `Customer: ${user.username ?? user.id}`, `Channel: <#${channelId}>`],
+        0x3b82f6
+      )
       return NextResponse.json({
         type: 4,
         data: { content: `Your ${cfg.label} ticket is ready: <#${channelId}>`, flags: EPHEMERAL },

@@ -4,7 +4,7 @@ import { db } from '@/lib/db'
 import { orders, tasks } from '@/lib/db/schema'
 import { flagExpiringWarranties } from '@/lib/automations'
 import { sweepCommissions, assignMonthlyTiers, finalizePreviousMonth } from '@/lib/commissions'
-import { postWeeklyLeaderboard } from '@/lib/discord-posts'
+import { postWeeklyLeaderboard, postDailyReport } from '@/lib/discord-posts'
 import { deleteStaleTicketChannels } from '@/lib/discord'
 
 export const dynamic = 'force-dynamic'
@@ -36,6 +36,7 @@ async function handle(req: Request): Promise<NextResponse> {
   const archivedMonth = await finalizePreviousMonth()
   // Post the weekly leaderboard once a week (Mondays) to the affiliates channel.
   const leaderboardPosted = now.getDay() === 1 ? await postWeeklyLeaderboard() : false
+  const dailyReportPosted = await postDailyReport()
 
   // Prune ticket channels older than the retention window so the guild stays
   // under Discord's ~500-channel cap. Capped per run; drains a backlog gradually.
@@ -69,6 +70,7 @@ async function handle(req: Request): Promise<NextResponse> {
     tiersChanged,
     archivedMonth,
     leaderboardPosted,
+    dailyReportPosted,
     ticketChannelsEligible: ticketCleanup.eligible,
     ticketChannelsDeleted: ticketCleanup.deleted,
   })

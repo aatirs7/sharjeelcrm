@@ -1,3 +1,6 @@
+import { gte } from 'drizzle-orm'
+import { db } from './db'
+import { leads, orders, commissions } from './db/schema'
 import { postToChannel } from './discord'
 import { getLeaderboard } from './queries/leaderboard'
 import { formatCents } from './money'
@@ -42,6 +45,34 @@ export async function postSalesPanel(channelId: string): Promise<boolean> {
       },
     ],
   })
+}
+
+/** Daily sales report to the private admin channel (spec §26). */
+export async function postDailyReport(): Promise<boolean> {
+  const start = new Date()
+  start.setHours(0, 0, 0, 0)
+  const [allLeads, allOrders, ledger] = await Promise.all([
+    db.select().from(leads).where(gte(leads.createdAt, start)),
+    db.select().from(orders),
+    db.select().from(commissions).where(gte(commissions.createdAt, start)),
+  ])
+  const completedToday = allOrders.filter((o) => o.paidAt && new Date(o.paidAt) >= start && o.paymentStatus === 'paid')
+  const revenueToday = completedToday.reduce((s, o) => s + o.priceCents, 0)
+  const referralSales = completedToday.filter((o) => o.sourceCoachId).length
+  const openDeals = allLeads // created today; plus overall open
+  const commissionsToday = ledger.length
+  return postAdminNotify(
+    '📊 Daily report',
+    [
+      `New tickets: ${allLeads.length}`,
+      `Completed sales: ${completedToday.length}`,
+      `Revenue: ${formatCents(revenueToday)}`,
+      `Referral sales: ${referralSales}`,
+      `Commissions created: ${commissionsToday}`,
+      `New deals opened: ${openDeals.length}`,
+    ],
+    0x2f66e6
+  )
 }
 
 /** Post an event notification to the private admin channel. */

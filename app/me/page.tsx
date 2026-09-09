@@ -13,7 +13,7 @@ export default async function MyPerformancePage() {
   const session = await getSession()
   const rep = await getCurrentRep()
   // Admins have no personal worker scope; send them to the admin workers view.
-  if (session?.role === 'admin') redirect('/workers')
+  if (session?.role === 'admin' || session?.role === 'owner') redirect('/workers')
   if (!rep) redirect('/login')
 
   const now = new Date()

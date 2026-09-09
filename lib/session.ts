@@ -8,15 +8,18 @@ export { PIN_COOKIE, PIN_MAX_AGE }
  * A legacy PIN-only cookie (single hex string, no colons) is still accepted as
  * an admin session so existing logins survive the upgrade.
  */
-export type Role = 'admin' | 'coach' | 'worker'
+import type { Role } from './permissions'
+export type { Role }
+
+const ROLES: Role[] = ['owner', 'admin', 'manager', 'worker', 'coach']
 
 export interface Session {
   role: Role
   coachId: string | null // set when role === 'coach'
-  repId: string | null // set when role === 'worker'
+  repId: string | null // set for staff roles (owner/admin/manager/worker)
 }
 
-/** subjectId is the coach id (coach) or worker rep id (worker); '' for admin. */
+/** subjectId is the coach id (coach) or rep id (staff). */
 export function mintSession(role: Role, subjectId: string | null): string {
   const payload = `${role}:${subjectId ?? ''}`
   return `${payload}:${signValue(payload)}`
@@ -25,19 +28,20 @@ export function mintSession(role: Role, subjectId: string | null): string {
 export function parseSession(token: string | undefined): Session | null {
   if (!token) return null
   const parts = token.split(':')
-  // Legacy admin cookie: a single HMAC of the PIN, no role prefix.
+  // Legacy admin cookie: a single HMAC of the PIN, no role prefix -> owner.
   if (parts.length === 1) {
-    return isValidSession(token) ? { role: 'admin', coachId: null, repId: null } : null
+    return isValidSession(token) ? { role: 'owner', coachId: null, repId: 'local_admin' } : null
   }
   if (parts.length !== 3) return null
   const [role, subjectId, sig] = parts
-  if (role !== 'admin' && role !== 'coach' && role !== 'worker') return null
+  if (!ROLES.includes(role as Role)) return null
   const payload = `${role}:${subjectId}`
   if (!equals(sig, signValue(payload))) return null
+  const r = role as Role
   return {
-    role,
-    coachId: role === 'coach' ? subjectId || null : null,
-    repId: role === 'worker' ? subjectId || null : null,
+    role: r,
+    coachId: r === 'coach' ? subjectId || null : null,
+    repId: r !== 'coach' ? subjectId || null : null,
   }
 }
 

@@ -8,44 +8,46 @@ import { cn } from "@/lib/utils";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { signOut } from "@/lib/actions/auth";
 
-const ADMIN_NAV = [
-  { href: "/", label: "dashboard" },
-  { href: "/search", label: "search" },
-  { href: "/tickets", label: "tickets" },
-  { href: "/orders", label: "orders" },
-  { href: "/revenue", label: "revenue" },
-  { href: "/payouts", label: "payouts" },
-  { href: "/coaches", label: "coaches" },
-  { href: "/workers", label: "workers" },
-  { href: "/products", label: "products" },
-  { href: "/inventory", label: "inventory" },
-  { href: "/leaderboard", label: "leaderboard" },
-  { href: "/content", label: "content" },
-  { href: "/tasks", label: "tasks" },
-  { href: "/customers", label: "customers" },
-  { href: "/issues", label: "issues" },
-  { href: "/audit", label: "audit" },
-  { href: "/settings", label: "settings" },
+import { can, type Capability, type Role } from "@/lib/permissions";
+
+type NavItem = { href: string; label: string; cap: Capability; personal?: boolean };
+
+const STAFF_NAV: NavItem[] = [
+  { href: "/", label: "dashboard", cap: "financials" },
+  { href: "/search", label: "search", cap: "deals" },
+  { href: "/tickets", label: "deals", cap: "deals" },
+  { href: "/orders", label: "orders", cap: "deals" },
+  { href: "/customers", label: "customers", cap: "deals" },
+  { href: "/issues", label: "issues", cap: "deals" },
+  { href: "/tasks", label: "tasks", cap: "deals" },
+  { href: "/me", label: "my performance", cap: "deals", personal: true },
+  { href: "/revenue", label: "revenue", cap: "financials" },
+  { href: "/payouts", label: "payouts", cap: "payouts" },
+  { href: "/coaches", label: "coaches", cap: "coaches" },
+  { href: "/content", label: "content", cap: "coaches" },
+  { href: "/workers", label: "workers", cap: "workers" },
+  { href: "/products", label: "products", cap: "products" },
+  { href: "/inventory", label: "inventory", cap: "products" },
+  { href: "/leaderboard", label: "leaderboard", cap: "leaderboard" },
+  { href: "/fraud", label: "fraud", cap: "fraud" },
+  { href: "/audit", label: "audit", cap: "audit" },
+  { href: "/settings", label: "settings", cap: "settings" },
 ];
 
-const COACH_NAV = [{ href: "/coach", label: "dashboard" }];
-
-const WORKER_NAV = [
-  { href: "/tickets", label: "deals" },
-  { href: "/orders", label: "orders" },
-  { href: "/customers", label: "customers" },
-  { href: "/tasks", label: "tasks" },
-  { href: "/me", label: "my performance" },
-];
+const COACH_NAV: NavItem[] = [{ href: "/coach", label: "dashboard", cap: "deals" }];
 
 function isActive(pathname: string, href: string) {
   return href === "/" ? pathname === "/" : pathname.startsWith(href);
 }
 
-export function AppNav({ role = "admin" }: { role?: "admin" | "coach" | "worker" }) {
+export function AppNav({ role = "owner" }: { role?: Role }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
-  const NAV = role === "coach" ? COACH_NAV : role === "worker" ? WORKER_NAV : ADMIN_NAV;
+  const personal = role === "worker" || role === "manager"; // owner/admin use /workers instead
+  const NAV =
+    role === "coach"
+      ? COACH_NAV
+      : STAFF_NAV.filter((n) => can(role, n.cap) && (!n.personal || personal));
 
   // Close the mobile menu on navigation.
   // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -99,7 +101,7 @@ export function AppNav({ role = "admin" }: { role?: "admin" | "coach" | "worker"
             </span>
             live
           </span>
-          {role === "admin" && (
+          {(role === "admin" || role === "owner") && (
             <button
               type="button"
               aria-label="What's new"

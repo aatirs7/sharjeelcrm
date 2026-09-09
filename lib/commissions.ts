@@ -5,7 +5,9 @@ import { getSettings } from './settings'
 import { recomputeCoachRollups } from './automations'
 import { tierForBuyers } from './money'
 import { getRefundSignals, type RefundSignal } from './stripe'
-import { assignMemberRole } from './discord'
+import { assignMemberRole, postToChannel } from './discord'
+import { postAdminNotify } from './discord-posts'
+import { formatCents } from './money'
 import { logAudit } from './audit'
 
 const DAY = 86_400_000
@@ -63,6 +65,12 @@ export async function syncOrderCommission(orderId: string): Promise<void> {
       status: 'pending',
       eligibleAt,
     })
+    const coach = await db.query.coaches.findFirst({ where: eq(coaches.id, order.sourceCoachId!) })
+    await postAdminNotify(
+      '💵 Commission created',
+      [`Coach: ${coach?.name ?? '—'}`, `Amount: ${formatCents(order.commissionCents)} (pending 7-day hold)`],
+      0x8b5cf6
+    )
   } else if (existing.status === 'pending') {
     await db
       .update(commissions)
@@ -283,5 +291,19 @@ export async function finalizePreviousMonth(): Promise<string | null> {
     }))
 
   await db.insert(leaderboardMonths).values({ month: key, standings })
+
+  // Announce the monthly winner (spec §25) to staff + the affiliates channel.
+  if (standings.length > 0) {
+    const w = standings[0]
+    const lines = standings
+      .slice(0, 3)
+      .map((s) => `${['🥇', '🥈', '🥉'][s.rank - 1]} ${s.name} — ${s.buyers} buyers${s.rewardCents ? ` · ${formatCents(s.rewardCents)}` : ''}`)
+    await postAdminNotify(`🏆 ${key} leaderboard winner: ${w.name}`, lines, 0xf59e0b)
+    if (process.env.AFFILIATE_CHANNEL_ID) {
+      await postToChannel(process.env.AFFILIATE_CHANNEL_ID, {
+        embeds: [{ title: `🏆 ${key} winners`, description: lines.join('\n'), color: 0xf59e0b }],
+      })
+    }
+  }
   return key
 }

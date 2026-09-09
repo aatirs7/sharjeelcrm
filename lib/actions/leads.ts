@@ -134,6 +134,12 @@ export async function setLeadStatus(
       [`Deal: DEAL-${before?.dealNumber}`, `Customer: ${before?.discordUsername}`],
       0xf43f5e
     )
+  } else if (status === 'payment_received') {
+    await postAdminNotify(
+      '💳 Payment received',
+      [`Deal: DEAL-${before?.dealNumber}`, `Customer: ${before?.discordUsername}`],
+      0x22c55e
+    )
   }
   revalidatePath('/tickets')
   revalidatePath(`/tickets/${id}`)

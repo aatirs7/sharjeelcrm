@@ -35,7 +35,7 @@ export function AddWorkerDialog() {
   const [pending, startTransition] = useTransition()
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
-  const [role, setRole] = useState<'admin' | 'worker'>('worker')
+  const [role, setRole] = useState<'admin' | 'manager' | 'worker'>('worker')
 
   function submit() {
     if (!name.trim()) return toast.error('Name is required')
@@ -71,12 +71,13 @@ export function AddWorkerDialog() {
           </div>
           <div className="space-y-1.5">
             <Label>Role</Label>
-            <Select value={role} onValueChange={(v) => setRole((v ?? 'worker') as 'admin' | 'worker')}>
+            <Select value={role} onValueChange={(v) => setRole((v ?? 'worker') as 'admin' | 'manager' | 'worker')}>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="worker">Worker</SelectItem>
+                <SelectItem value="manager">Manager</SelectItem>
                 <SelectItem value="admin">Admin</SelectItem>
               </SelectContent>
             </Select>
@@ -124,7 +125,7 @@ export function WorkerRowActions({
     if (!next || next === role) return
     startTransition(async () => {
       try {
-        await setWorkerRole(id, next as 'admin' | 'worker')
+        await setWorkerRole(id, next as 'admin' | 'manager' | 'worker')
         router.refresh()
       } catch {
         toast.error('Could not update role')
@@ -154,6 +155,7 @@ export function WorkerRowActions({
         </SelectTrigger>
         <SelectContent>
           <SelectItem value="worker">worker</SelectItem>
+          <SelectItem value="manager">manager</SelectItem>
           <SelectItem value="admin">admin</SelectItem>
         </SelectContent>
       </Select>

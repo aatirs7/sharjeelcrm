@@ -86,7 +86,7 @@ const STEPS: Step[] = [
   },
 ]
 
-export function WhatsNew({ role = 'admin' }: { role?: 'admin' | 'coach' | 'worker' }) {
+export function WhatsNew({ role = 'admin' }: { role?: string }) {
   const pathname = usePathname()
   const [open, setOpen] = useState(false)
   const [i, setI] = useState(0)
@@ -95,7 +95,7 @@ export function WhatsNew({ role = 'admin' }: { role?: 'admin' | 'coach' | 'worke
   // Auto-open for admins outside the login screen, unless it has been
   // permanently dismissed (localStorage) or already seen this session.
   useEffect(() => {
-    if (role !== 'admin' || pathname === '/login') return
+    if ((role !== 'admin' && role !== 'owner') || pathname === '/login') return
     try {
       if (!localStorage.getItem(SEEN_KEY) && !sessionStorage.getItem(SEEN_KEY)) {
         // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -128,7 +128,7 @@ export function WhatsNew({ role = 'admin' }: { role?: 'admin' | 'coach' | 'worke
     }
   }
 
-  if (role !== 'admin') return null
+  if (role !== 'admin' && role !== 'owner') return null
 
   const step = STEPS[i]
   const Icon = step.icon

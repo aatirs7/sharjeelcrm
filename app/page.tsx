@@ -18,7 +18,7 @@ export default async function DashboardPage({
   const period: Period = periodParam === 'week' ? 'week' : 'month'
 
   const rep = await getCurrentRep()
-  const isAdmin = rep?.role === 'admin'
+  const isAdmin = rep?.role === 'admin' || rep?.role === 'owner'
   const [m, stripe] = await Promise.all([getDashboardMetrics(period), getStripeStats()])
 
   // Stripe is the source of truth for money.

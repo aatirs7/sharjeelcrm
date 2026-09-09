@@ -195,6 +195,8 @@ export const coaches = pgTable('coaches', {
   status: coachStatus('status').notNull().default('active'),
   // HMAC of the coach's login code, never the code itself. See lib/session.ts.
   loginCodeHash: text('login_code_hash'),
+  discordUserId: text('discord_user_id'), // for Discord OAuth + self-referral checks
+  referralClicks: integer('referral_clicks').notNull().default(0), // /ref/<code> hits
   // Persisted rollups (recomputed on order/commission mutations).
   referralsCount: integer('referrals_count').notNull().default(0),
   closedSalesCount: integer('closed_sales_count').notNull().default(0),
@@ -466,6 +468,38 @@ export const products = pgTable('products', {
 })
 
 // ---------------------------------------------------------------------------
+// payout_requests — a coach asks to be paid; admin approves/rejects (spec §28).
+// ---------------------------------------------------------------------------
+
+export const payoutRequests = pgTable('payout_requests', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  coachId: uuid('coach_id')
+    .notNull()
+    .references(() => coaches.id),
+  amountCents: integer('amount_cents').notNull().default(0),
+  status: text('status').notNull().default('pending'), // pending | approved | rejected | paid
+  note: text('note'),
+  payoutId: uuid('payout_id').references(() => payouts.id),
+  createdAt: createdAt(),
+  resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+})
+
+// ---------------------------------------------------------------------------
+// fraud_flags — suspicious activity for admin review, never auto-ban (spec §29).
+// ---------------------------------------------------------------------------
+
+export const fraudFlags = pgTable('fraud_flags', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  type: text('type').notNull(), // self_referral | duplicate_id | rapid_referrals | repeat_refunder | attribution_churn
+  coachId: uuid('coach_id').references(() => coaches.id),
+  customerId: uuid('customer_id').references(() => customers.id),
+  detail: text('detail').notNull(),
+  refKey: text('ref_key').unique(), // dedupe key so the sweep doesn't re-flag
+  status: text('status').notNull().default('open'), // open | reviewed | dismissed
+  createdAt: createdAt(),
+})
+
+// ---------------------------------------------------------------------------
 // inventory_items — trackable stock for digital products (spec §32). Sensitive
 // credentials stay here, never exposed in Discord logs.
 // ---------------------------------------------------------------------------
@@ -569,3 +603,5 @@ export type LeaderboardMonth = typeof leaderboardMonths.$inferSelect
 export type Product = typeof products.$inferSelect
 export type NewProduct = typeof products.$inferInsert
 export type InventoryItem = typeof inventoryItems.$inferSelect
+export type PayoutRequest = typeof payoutRequests.$inferSelect
+export type FraudFlag = typeof fraudFlags.$inferSelect

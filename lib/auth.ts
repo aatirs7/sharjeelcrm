@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm'
 import { db } from './db'
 import { reps, type Rep } from './db/schema'
 import { PIN_COOKIE, parseSession, type Session } from './session'
+import { can, isStaffRole, type Capability, type Role } from './permissions'
 
 // ---------------------------------------------------------------------------
 // Identity from the HMAC-signed session cookie (lib/session.ts):
@@ -31,12 +32,22 @@ export async function getSession(): Promise<Session | null> {
   return parseSession(jar.get(PIN_COOKIE)?.value)
 }
 
-export async function isAdmin(): Promise<boolean> {
-  return (await getSession())?.role === 'admin'
+export async function getRole(): Promise<Role | null> {
+  return (await getSession())?.role ?? null
 }
 
-export async function isWorker(): Promise<boolean> {
-  return (await getSession())?.role === 'worker'
+/** True for owner or admin (full financial/coach access). */
+export async function isAdmin(): Promise<boolean> {
+  const r = await getRole()
+  return r === 'owner' || r === 'admin'
+}
+
+export async function isOwner(): Promise<boolean> {
+  return (await getRole()) === 'owner'
+}
+
+export async function hasCapability(cap: Capability): Promise<boolean> {
+  return can(await getRole(), cap)
 }
 
 /** The signed-in coach's id, or null when the session is not a coach. */
@@ -45,26 +56,38 @@ export async function getCurrentCoachId(): Promise<string | null> {
   return s?.role === 'coach' ? s.coachId : null
 }
 
-/** The acting rep (admin -> local admin rep; worker -> their rep row), else null. */
+/** The acting rep (owner -> local admin; other staff -> their rep row), else null. */
 export async function getCurrentRep(): Promise<Rep | null> {
   const s = await getSession()
-  if (s?.role === 'admin') return ensureLocalRep()
-  if (s?.role === 'worker' && s.repId) {
-    return (await db.query.reps.findFirst({ where: eq(reps.id, s.repId) })) ?? null
-  }
-  return null
+  if (!s || !isStaffRole(s.role)) return null
+  if (s.role === 'owner' && (!s.repId || s.repId === 'local_admin')) return ensureLocalRep()
+  if (s.repId) return (await db.query.reps.findFirst({ where: eq(reps.id, s.repId) })) ?? ensureLocalRep()
+  return ensureLocalRep()
 }
 
-/** Guard for deal/ticket mutations — admin or worker. Returns the acting rep. */
+/** Guard for deal/ticket mutations — any staff. Returns the acting rep. */
 export async function requireStaff(): Promise<Rep> {
   const rep = await getCurrentRep()
   if (!rep) throw new Error('Forbidden: staff session required')
   return rep
 }
 
-/** Guard for money/coach/admin mutations — admin only. */
+/** Guard requiring a specific capability. */
+export async function requireCapability(cap: Capability): Promise<Rep> {
+  const rep = await getCurrentRep()
+  if (!rep || !can(await getRole(), cap)) throw new Error(`Forbidden: ${cap} required`)
+  return rep
+}
+
+/** Guard for money/coach mutations — owner or admin. */
 export async function requireAdmin(): Promise<Rep> {
   if (!(await isAdmin())) throw new Error('Forbidden: admin session required')
+  return (await getCurrentRep()) ?? ensureLocalRep()
+}
+
+/** Guard for owner-only actions (workers, settings, permissions). */
+export async function requireOwner(): Promise<Rep> {
+  if (!(await isOwner())) throw new Error('Forbidden: owner session required')
   return ensureLocalRep()
 }
 

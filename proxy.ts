@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { PIN_COOKIE } from '@/lib/pin'
 import { parseSession } from '@/lib/session'
+import { can, capabilityForPath, landingFor } from '@/lib/permissions'
 
 /**
  * Auth gate.
@@ -26,18 +27,20 @@ export function proxy(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
-  if (session.role === 'coach' && !pathname.startsWith('/coach')) {
-    const url = request.nextUrl.clone()
-    url.pathname = '/coach'
-    url.search = ''
-    return NextResponse.redirect(url)
+  if (session.role === 'coach') {
+    if (!pathname.startsWith('/coach')) {
+      const url = request.nextUrl.clone()
+      url.pathname = '/coach'
+      url.search = ''
+      return NextResponse.redirect(url)
+    }
+    return NextResponse.next()
   }
 
-  // Workers handle deals only — no money/coach/admin areas or owner analytics.
-  const WORKER_ALLOWED = ['/tickets', '/orders', '/customers', '/tasks', '/me']
-  if (session.role === 'worker' && !WORKER_ALLOWED.some((p) => pathname === p || pathname.startsWith(p + '/'))) {
+  // Staff (owner/admin/manager/worker): gate each path by capability.
+  if (!can(session.role, capabilityForPath(pathname))) {
     const url = request.nextUrl.clone()
-    url.pathname = '/tickets'
+    url.pathname = landingFor(session.role)
     url.search = ''
     return NextResponse.redirect(url)
   }

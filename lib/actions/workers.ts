@@ -21,24 +21,25 @@ function slugId(name: string): string {
 export interface WorkerInput {
   displayName: string
   email?: string | null
-  role?: 'admin' | 'worker'
+  role?: 'admin' | 'manager' | 'worker'
 }
 
 /** Admin: create a worker (or admin) account. */
 export async function createWorker(input: WorkerInput): Promise<string> {
   await requireAdmin()
   const id = slugId(input.displayName)
+  const role = input.role && ['admin', 'manager', 'worker'].includes(input.role) ? input.role : 'worker'
   await db.insert(reps).values({
     id,
     displayName: input.displayName.trim(),
     email: input.email?.trim() || null,
-    role: input.role === 'admin' ? 'admin' : 'worker',
+    role,
   })
   await logAudit({
     action: 'worker.create',
     entity: 'worker',
     entityRef: input.displayName.trim(),
-    summary: `Created ${input.role === 'admin' ? 'admin' : 'worker'} ${input.displayName.trim()}`,
+    summary: `Created ${role} ${input.displayName.trim()}`,
   })
   revalidatePath('/workers')
   return id
@@ -50,7 +51,7 @@ export async function setWorkerActive(id: string, active: boolean): Promise<void
   revalidatePath('/workers')
 }
 
-export async function setWorkerRole(id: string, role: 'admin' | 'worker'): Promise<void> {
+export async function setWorkerRole(id: string, role: 'admin' | 'manager' | 'worker'): Promise<void> {
   await requireAdmin()
   await db.update(reps).set({ role }).where(eq(reps.id, id))
   await logAudit({

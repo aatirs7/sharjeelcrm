@@ -48,8 +48,8 @@ export default async function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          <AppNav role={session?.role ?? "admin"} />
-          <WhatsNew role={session?.role ?? "admin"} />
+          <AppNav role={session?.role ?? "owner"} />
+          <WhatsNew role={session?.role ?? "owner"} />
           <main className="flex-1 w-full max-w-[76rem] mx-auto px-5 py-8 md:py-10 space-y-8">
             {children}
           </main>

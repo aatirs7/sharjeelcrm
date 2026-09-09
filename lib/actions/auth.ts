@@ -7,6 +7,7 @@ import { db } from '../db'
 import { coaches, reps } from '../db/schema'
 import { isCorrectPin, PIN_COOKIE, PIN_MAX_AGE } from '../pin'
 import { mintSession, hashLoginCode } from '../session'
+import { landingFor, type Role } from '../permissions'
 
 export interface PinState {
   error?: string
@@ -35,21 +36,22 @@ export async function submitPin(_prev: PinState, formData: FormData): Promise<Pi
 
   const jar = await cookies()
 
-  // Admin PIN.
+  // Master PIN -> owner.
   if (isCorrectPin(input)) {
-    setSessionCookie(jar, mintSession('admin', null))
+    setSessionCookie(jar, mintSession('owner', 'local_admin'))
     redirect(next.startsWith('/') && !next.startsWith('//') ? next : '/')
   }
 
   const codeHash = hashLoginCode(input)
 
-  // Worker login code (active workers).
-  const worker = await db.query.reps.findFirst({
+  // Staff login code (owner/admin/manager/worker) — role comes from the rep row.
+  const staff = await db.query.reps.findFirst({
     where: and(eq(reps.loginCodeHash, codeHash), eq(reps.active, true)),
   })
-  if (worker) {
-    setSessionCookie(jar, mintSession('worker', worker.id))
-    redirect('/tickets')
+  if (staff) {
+    const role = (staff.role as Role) ?? 'worker'
+    setSessionCookie(jar, mintSession(role, staff.id))
+    redirect(landingFor(role))
   }
 
   // Coach login code (HMAC lookup, active coaches only).
