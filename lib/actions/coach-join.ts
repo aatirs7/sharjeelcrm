@@ -5,12 +5,11 @@ import { redirect } from 'next/navigation'
 import { sql } from 'drizzle-orm'
 import { db } from '../db'
 import { coaches } from '../db/schema'
+import { COACH_JOIN_COOKIE } from '../coach-join-cookie'
 
 export interface JoinState {
   error?: string
 }
-
-export const COACH_JOIN_COOKIE = 'coach_join'
 
 /** A promo code is letters and digits only, 3 to 20 chars. Stored uppercased. */
 function normalizePromo(raw: string): string | null {

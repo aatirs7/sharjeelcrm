@@ -6,7 +6,7 @@ import { db } from '@/lib/db'
 import { reps, coaches } from '@/lib/db/schema'
 import { PIN_COOKIE, PIN_MAX_AGE } from '@/lib/pin'
 import { mintSession } from '@/lib/session'
-import { COACH_JOIN_COOKIE } from '@/lib/actions/coach-join'
+import { COACH_JOIN_COOKIE } from '@/lib/coach-join-cookie'
 import { landingFor, type Role } from '@/lib/permissions'
 
 /** Slug for a coach handle: lowercase, dashed, unique via a short suffix. */
