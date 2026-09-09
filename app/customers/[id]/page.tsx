@@ -53,11 +53,18 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
           ← customers
         </Link>
         <div className="flex items-center gap-3">
+          {customer.avatarUrl && (
+            /* eslint-disable-next-line @next/next/no-img-element */
+            <img src={customer.avatarUrl} alt="" className="size-9 rounded-full" />
+          )}
           <h1 className="font-heading text-3xl font-semibold tracking-tight">
             {customer.discordUsername}
           </h1>
           <RiskStatusBadge status={customer.riskStatus} />
         </div>
+        {customer.discordId && (
+          <p className="font-mono text-[11px] text-muted-foreground">id: {customer.discordId}</p>
+        )}
       </div>
 
       <div className="grid gap-6 md:grid-cols-2">
@@ -74,6 +81,10 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
               value={customer.lastPurchaseAt ? new Date(customer.lastPurchaseAt).toLocaleDateString() : '—'}
             />
             <Row label="Active warranties" value={activeWarranties} />
+            <Row
+              label="Refunds / disputes"
+              value={history.filter((o) => o.paymentStatus === 'refunded' || o.paymentStatus === 'chargeback').length}
+            />
           </CardContent>
         </Card>
 

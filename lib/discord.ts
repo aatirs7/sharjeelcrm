@@ -32,6 +32,16 @@ export async function ddelete(path: string): Promise<Response> {
   return fetch(`${API}${path}`, { method: 'DELETE', headers: authHeaders() })
 }
 
+/** A user's avatar CDN url, or null. Best-effort (needs the bot token). */
+export async function getUserAvatarUrl(userId: string): Promise<string | null> {
+  try {
+    const u = await dget<{ avatar: string | null }>(`/users/${userId}`)
+    return u.avatar ? `https://cdn.discordapp.com/avatars/${userId}/${u.avatar}.png` : null
+  } catch {
+    return null
+  }
+}
+
 const DISCORD_EPOCH = 1420070400000
 /** Channel/message creation time in ms, decoded from its snowflake id. */
 export function snowflakeMs(id: string): number {

@@ -6,6 +6,7 @@ import { syncOrderCommission } from './commissions'
 import { createDeliveryTaskForOrder, recomputeOrderRollups } from './automations'
 import { logAudit } from './audit'
 import { postAdminNotify } from './discord-posts'
+import { getUserAvatarUrl } from './discord'
 
 type PaymentMethodValue = (typeof paymentMethodEnum.enumValues)[number]
 
@@ -26,15 +27,30 @@ export async function createOrderForLead(leadId: string, input: CreateOrderInput
   const lead = await db.query.leads.findFirst({ where: eq(leads.id, leadId) })
   if (!lead) throw new Error('Deal not found')
 
-  let customer = await db.query.customers.findFirst({
-    where: eq(customers.discordUsername, lead.discordUsername),
-  })
+  // Recognize repeat customers by stable Discord id first (§30), then username.
+  let customer = lead.discordUserId
+    ? await db.query.customers.findFirst({ where: eq(customers.discordId, lead.discordUserId) })
+    : undefined
   if (!customer) {
+    customer = await db.query.customers.findFirst({
+      where: eq(customers.discordUsername, lead.discordUsername),
+    })
+  }
+  if (!customer) {
+    const avatarUrl = lead.discordUserId ? await getUserAvatarUrl(lead.discordUserId) : null
     const [created] = await db
       .insert(customers)
-      .values({ discordUsername: lead.discordUsername, displayName: lead.discordUsername })
+      .values({
+        discordUsername: lead.discordUsername,
+        discordId: lead.discordUserId ?? null,
+        avatarUrl,
+        displayName: lead.discordUsername,
+      })
       .returning()
     customer = created
+  } else if (lead.discordUserId && !customer.discordId) {
+    // Backfill the Discord id on an older username-keyed customer.
+    await db.update(customers).set({ discordId: lead.discordUserId }).where(eq(customers.id, customer.id))
   }
 
   let coachId = input.coachId || lead.sourceCoachId || null

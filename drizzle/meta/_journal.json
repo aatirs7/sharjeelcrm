@@ -106,6 +106,13 @@
       "when": 1788970337540,
       "tag": "0014_productive_purifiers",
       "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1788970734758,
+      "tag": "0015_chemical_luckman",
+      "breakpoints": true
     }
   ]
 }

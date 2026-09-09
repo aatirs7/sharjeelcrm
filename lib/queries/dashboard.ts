@@ -5,6 +5,30 @@ import { warrantyState } from '../warranty'
 
 export type Period = 'week' | 'month'
 
+export interface TodaySnapshot {
+  newLeads: number
+  completed: number
+  revenueCents: number
+  referralSales: number
+  followUpsDue: number
+}
+
+/** "Today" figures for the dashboard (spec §20). */
+export async function getTodaySnapshot(): Promise<TodaySnapshot> {
+  const start = new Date()
+  start.setHours(0, 0, 0, 0)
+  const now = new Date()
+  const [allOrders, allLeads] = await Promise.all([db.select().from(orders), db.select().from(leads)])
+  const paidToday = allOrders.filter((o) => o.paymentStatus === 'paid' && o.paidAt && new Date(o.paidAt) >= start)
+  return {
+    newLeads: allLeads.filter((l) => new Date(l.createdAt) >= start).length,
+    completed: paidToday.length,
+    revenueCents: paidToday.reduce((s, o) => s + o.priceCents, 0),
+    referralSales: paidToday.filter((o) => o.sourceCoachId).length,
+    followUpsDue: allLeads.filter((l) => l.nextFollowUpAt && new Date(l.nextFollowUpAt) <= now).length,
+  }
+}
+
 export interface DashboardMetrics {
   period: Period
   rangeLabel: string

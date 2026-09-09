@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation'
 import { eq } from 'drizzle-orm'
 import { db } from '@/lib/db'
-import { coaches, leads, commissions, coachContent, payoutRequests } from '@/lib/db/schema'
+import { coaches, leads, orders, commissions, coachContent, payoutRequests } from '@/lib/db/schema'
 import { getCurrentCoachId, isAdmin } from '@/lib/auth'
 import { getCoachPayouts } from '@/lib/queries/payouts'
 import { getCoachAchievements, ACHIEVEMENTS } from '@/lib/achievements'
@@ -37,8 +37,9 @@ export default async function CoachDashboard() {
   const coach = await db.query.coaches.findFirst({ where: eq(coaches.id, coachId!) })
   if (!coach) redirect('/login')
 
-  const [myLeads, ledger, payoutHistory, content, myRequests, achievements] = await Promise.all([
+  const [myLeads, myOrders, ledger, payoutHistory, content, myRequests, achievements] = await Promise.all([
     db.select().from(leads).where(eq(leads.sourceCoachId, coachId!)),
+    db.select().from(orders).where(eq(orders.sourceCoachId, coachId!)),
     db.select().from(commissions).where(eq(commissions.coachId, coachId!)),
     getCoachPayouts(coachId!),
     db.select().from(coachContent).where(eq(coachContent.coachId, coachId!)),
@@ -46,6 +47,25 @@ export default async function CoachDashboard() {
     getCoachAchievements(coachId!),
   ])
   const unlocked = new Set(achievements)
+
+  // Referral history with masked customer handles (§15).
+  const commissionByOrder = new Map(ledger.map((c) => [c.orderId, c]))
+  const orderByLead = new Map(myOrders.filter((o) => o.leadId).map((o) => [o.leadId!, o]))
+  const mask = (u: string) => (u.length <= 4 ? u[0] + '***' : u.slice(0, 2) + '***' + u.slice(-2))
+  const referralHistory = [...myLeads]
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    .slice(0, 20)
+    .map((l) => {
+      const order = orderByLead.get(l.id)
+      const commission = order ? commissionByOrder.get(order.id) : undefined
+      return {
+        date: l.createdAt,
+        customer: mask(l.discordUsername),
+        deal: `DEAL-${l.dealNumber}`,
+        status: l.status,
+        commissionCents: commission && commission.status !== 'cancelled' && commission.status !== 'reversed' ? commission.amountCents : 0,
+      }
+    })
   const hasPendingRequest = myRequests.some((r) => r.status === 'pending')
 
   const ticketsOpened = myLeads.length
@@ -172,6 +192,43 @@ export default async function CoachDashboard() {
           </div>
         </div>
       )}
+
+      <div className="space-y-3">
+        <SectionLabel>referral history</SectionLabel>
+        <div className="overflow-x-auto rounded-xl border bg-card">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Date</TableHead>
+                <TableHead>Customer</TableHead>
+                <TableHead>Deal</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="text-right">Commission</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {referralHistory.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={5} className="py-8 text-center text-muted-foreground">
+                    No referrals yet.
+                  </TableCell>
+                </TableRow>
+              )}
+              {referralHistory.map((r) => (
+                <TableRow key={r.deal}>
+                  <TableCell className="text-xs text-muted-foreground">{fmtDate(r.date)}</TableCell>
+                  <TableCell className="font-mono text-sm">{r.customer}</TableCell>
+                  <TableCell className="font-mono text-xs text-muted-foreground">{r.deal}</TableCell>
+                  <TableCell className="text-sm">{titleCase(r.status)}</TableCell>
+                  <TableCell className="text-right tabular-nums font-medium">
+                    {r.commissionCents ? formatCents(r.commissionCents) : '—'}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      </div>
 
       <div className="space-y-3">
         <SectionLabel>your payouts</SectionLabel>

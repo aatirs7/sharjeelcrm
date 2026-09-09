@@ -1,5 +1,5 @@
 import { getCurrentRep } from '@/lib/auth'
-import { getDashboardMetrics, type Period } from '@/lib/queries/dashboard'
+import { getDashboardMetrics, getTodaySnapshot, type Period } from '@/lib/queries/dashboard'
 import { getStripeStats } from '@/lib/stripe'
 import { formatCents, splitRevenue, SUPPLIER_PCT, SERVICE_PCT, PROFIT_PCT } from '@/lib/money'
 import { titleCase } from '@/lib/labels'
@@ -19,7 +19,11 @@ export default async function DashboardPage({
 
   const rep = await getCurrentRep()
   const isAdmin = rep?.role === 'admin' || rep?.role === 'owner'
-  const [m, stripe] = await Promise.all([getDashboardMetrics(period), getStripeStats()])
+  const [m, stripe, today] = await Promise.all([
+    getDashboardMetrics(period),
+    getStripeStats(),
+    getTodaySnapshot(),
+  ])
 
   // Stripe is the source of truth for money.
   const live = stripe.configured && !stripe.error
@@ -41,6 +45,18 @@ export default async function DashboardPage({
         meta={`${rep ? rep.displayName ?? rep.email ?? rep.id : ''} · ${isAdmin ? 'admin' : 'rep'} · ${m.rangeLabel.toLowerCase()}`}
         action={<PeriodToggle period={period} />}
       />
+
+      {/* Today */}
+      <div className="space-y-3">
+        <SectionLabel>today</SectionLabel>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          <MetricCard label="New tickets" value={today.newLeads} />
+          <MetricCard label="Completed" value={today.completed} />
+          <MetricCard label="Revenue" value={formatCents(today.revenueCents)} />
+          <MetricCard label="Referral sales" value={today.referralSales} />
+          <MetricCard label="Follow-ups due" value={today.followUpsDue} sub={today.followUpsDue ? 'today' : 'all clear'} />
+        </div>
+      </div>
 
       {/* Revenue / sales */}
       <div className="space-y-3">
