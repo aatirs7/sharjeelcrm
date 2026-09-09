@@ -1,6 +1,7 @@
-// Live Stripe stats via the REST API (no SDK dependency). Read-only.
+// Live Stripe stats + Checkout via the REST API (no SDK dependency).
 // Needs a SECRET or RESTRICTED key (sk_... / rk_...). A publishable key
 // (pk_...) cannot read account data and is treated as "not configured".
+import { createHmac, timingSafeEqual } from 'node:crypto'
 
 const BASE = 'https://api.stripe.com/v1'
 
@@ -202,4 +203,125 @@ export async function getRefundSignals(): Promise<{
   } catch (e) {
     return { configured: true, error: e instanceof Error ? e.message : 'stripe error', signals: [] }
   }
+}
+
+// ---------------------------------------------------------------------------
+// Checkout — a buyer who picks "Card" in their Discord ticket gets a hosted
+// Stripe Checkout link for the selected product. Creating a session is a write,
+// so it needs a full secret key (sk_...); a restricted read key can't do it.
+// ---------------------------------------------------------------------------
+
+export type StripeMode = 'live' | 'test'
+
+/** Whether Stripe is set up at all (read or write), and in which mode. */
+export function stripeStatus(): { configured: boolean; canCharge: boolean; mode: StripeMode | null } {
+  const k = key()
+  if (!k) return { configured: false, canCharge: false, mode: null }
+  return { configured: true, canCharge: k.startsWith('sk_'), mode: k.includes('_live_') ? 'live' : 'test' }
+}
+
+/** Form-encode a nested object the way Stripe's API expects (a[b][c]=v). */
+function formEncode(obj: Record<string, unknown>, prefix = '', out = new URLSearchParams()): URLSearchParams {
+  for (const [k, v] of Object.entries(obj)) {
+    if (v == null) continue
+    const name = prefix ? `${prefix}[${k}]` : k
+    if (Array.isArray(v)) {
+      v.forEach((item, i) => {
+        if (item && typeof item === 'object') formEncode(item as Record<string, unknown>, `${name}[${i}]`, out)
+        else out.append(`${name}[${i}]`, String(item))
+      })
+    } else if (typeof v === 'object') {
+      formEncode(v as Record<string, unknown>, name, out)
+    } else {
+      out.append(name, String(v))
+    }
+  }
+  return out
+}
+
+export interface CheckoutSession {
+  id: string
+  url: string
+}
+
+/**
+ * Create a hosted Checkout session for one product. `returnUrl` is where the
+ * buyer lands after paying or cancelling (we send them back to their Discord
+ * ticket). The deal id travels in `metadata.leadId` so the webhook can mark
+ * the right deal paid. Throws when Stripe rejects the request.
+ */
+export async function createCheckoutSession(input: {
+  leadId: string
+  dealNumber: number
+  productName: string
+  amountCents: number
+  returnUrl: string
+  customerLabel?: string | null
+}): Promise<CheckoutSession> {
+  const k = key()
+  if (!k || !k.startsWith('sk_')) throw new Error('Stripe secret key (sk_...) is not configured')
+  const body = formEncode({
+    mode: 'payment',
+    client_reference_id: input.leadId,
+    success_url: input.returnUrl,
+    cancel_url: input.returnUrl,
+    line_items: [
+      {
+        quantity: 1,
+        price_data: {
+          currency: 'usd',
+          unit_amount: input.amountCents,
+          product_data: { name: input.productName.slice(0, 250) },
+        },
+      },
+    ],
+    metadata: {
+      leadId: input.leadId,
+      deal: `DEAL-${input.dealNumber}`,
+      customer: (input.customerLabel ?? '').slice(0, 200),
+    },
+    payment_intent_data: { description: `DEAL-${input.dealNumber} — ${input.productName}`.slice(0, 250) },
+  })
+  const res = await fetch(`${BASE}/checkout/sessions`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${k}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+    body,
+  })
+  const json = (await res.json()) as { id?: string; url?: string | null; error?: { message?: string } }
+  if (!res.ok || !json.id || !json.url) {
+    throw new Error(json.error?.message ?? `stripe checkout ${res.status}`)
+  }
+  return { id: json.id, url: json.url }
+}
+
+/**
+ * Verify a Stripe webhook signature (`Stripe-Signature: t=..,v1=..`) against
+ * the raw request body. Rejects payloads older than `toleranceSec`.
+ */
+export function verifyStripeWebhook(
+  rawBody: string,
+  signatureHeader: string | null,
+  secret: string,
+  toleranceSec = 300
+): boolean {
+  if (!signatureHeader) return false
+  const parts = Object.fromEntries(
+    signatureHeader.split(',').map((p) => {
+      const i = p.indexOf('=')
+      return [p.slice(0, i).trim(), p.slice(i + 1).trim()]
+    })
+  ) as Record<string, string>
+  const t = parts.t
+  const v1 = signatureHeader
+    .split(',')
+    .filter((p) => p.trim().startsWith('v1='))
+    .map((p) => p.trim().slice(3))
+  if (!t || v1.length === 0) return false
+  if (Math.abs(Date.now() / 1000 - Number(t)) > toleranceSec) return false
+  const expected = createHmac('sha256', secret).update(`${t}.${rawBody}`).digest('hex')
+  const exp = Buffer.from(expected)
+  return v1.some((sig) => {
+    const got = Buffer.from(sig)
+    return got.length === exp.length && timingSafeEqual(got, exp)
+  })
 }

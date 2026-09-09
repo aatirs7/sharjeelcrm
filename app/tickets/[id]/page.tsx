@@ -4,7 +4,7 @@ import { desc, eq } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { leads, orders, coaches, auditLogs } from '@/lib/db/schema'
 import { formatCents } from '@/lib/money'
-import { titleCase } from '@/lib/labels'
+import { titleCase, paymentMethodLabel } from '@/lib/labels'
 import { LeadStatusBadge, OrderStatusBadge } from '@/components/status-badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
@@ -69,6 +69,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
             coaches={coachList}
             defaultPackage={lead.interest ?? ''}
             defaultPriceDollars={lead.budgetCents != null ? (lead.budgetCents / 100).toString() : ''}
+            defaultMethod={lead.paymentMethod}
           />
         )}
       </div>
@@ -147,6 +148,33 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
                   )}
                   <ClaimButton leadId={lead.id} assigned={lead.assignedRepId} />
                 </span>
+              }
+            />
+            <Field
+              label="Payment"
+              value={
+                lead.paymentMethod ? (
+                  <span className="flex flex-col items-end gap-0.5">
+                    <span>
+                      {paymentMethodLabel(lead.paymentMethod)}
+                      {lead.paymentLink ? (
+                        <>
+                          {' · '}
+                          <a href={lead.paymentLink} target="_blank" rel="noreferrer" className="underline">
+                            checkout link
+                          </a>
+                        </>
+                      ) : null}
+                    </span>
+                    {lead.paymentRef ? (
+                      <span className="font-mono text-xs text-muted-foreground">{lead.paymentRef}</span>
+                    ) : lead.paymentMethod === 'crypto' && lead.status === 'waiting_payment' ? (
+                      <span className="text-xs text-muted-foreground">waiting for the transfer</span>
+                    ) : null}
+                  </span>
+                ) : (
+                  <span className="text-muted-foreground">not chosen yet</span>
+                )
               }
             />
             <Field label="Created" value={new Date(lead.createdAt).toLocaleDateString()} />

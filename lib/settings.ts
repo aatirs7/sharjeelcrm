@@ -15,12 +15,22 @@ export interface AppSettings {
   repeatCommission: 'first_only' | 'every_purchase'
   // Per-role capability revokes (§40). Owner is never revoked.
   roleOverrides: RoleOverrides
+  // Wallets the bot posts when a buyer picks "Crypto" in their ticket. With
+  // none saved the buyer is told to wait for the owner's reply instead.
+  cryptoAddresses: CryptoAddress[]
+}
+
+export interface CryptoAddress {
+  coin: string // e.g. BTC, ETH, USDT
+  network: string // e.g. Bitcoin, ERC-20, TRC-20 — optional
+  address: string
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
   leaderboardRewards: { first: 0, second: 0, third: 0 },
   repeatCommission: 'first_only',
   roleOverrides: { admin: [], manager: [] },
+  cryptoAddresses: [],
 }
 
 export async function getSettings(): Promise<AppSettings> {
@@ -35,6 +45,8 @@ export async function getSettings(): Promise<AppSettings> {
       DEFAULT_SETTINGS.repeatCommission,
     roleOverrides:
       (map.get('roleOverrides') as AppSettings['roleOverrides']) ?? DEFAULT_SETTINGS.roleOverrides,
+    cryptoAddresses:
+      (map.get('cryptoAddresses') as AppSettings['cryptoAddresses']) ?? DEFAULT_SETTINGS.cryptoAddresses,
   }
 }
 

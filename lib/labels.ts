@@ -3,6 +3,21 @@ export function titleCase(value: string): string {
   return value.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
 }
 
+/** Friendly names for payment methods ("card" is Stripe Checkout). */
+export const PAYMENT_METHOD_LABELS: Record<string, string> = {
+  card: 'Card (Stripe)',
+  crypto: 'Crypto',
+  paypal: 'PayPal',
+  zelle: 'Zelle',
+  cashapp: 'Cash App',
+  other: 'Other',
+}
+
+export function paymentMethodLabel(value: string | null | undefined): string {
+  if (!value) return '—'
+  return PAYMENT_METHOD_LABELS[value] ?? titleCase(value)
+}
+
 /** Tailwind class sets for status pills, keyed by enum value. */
 export const LEAD_STATUS_CLASSES: Record<string, string> = {
   new_lead: 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300',

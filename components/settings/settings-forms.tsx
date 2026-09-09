@@ -3,7 +3,7 @@
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
-import { applyBotAvatar, saveLeaderboardRewards, saveRepeatCommission } from '@/lib/actions/settings'
+import { applyBotAvatar, saveCryptoAddresses, saveLeaderboardRewards, saveRepeatCommission } from '@/lib/actions/settings'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -129,6 +129,94 @@ export function BotAvatarForm({ botName }: { botName: string | null }) {
       <Button onClick={apply} disabled={pending}>
         {pending ? 'Updating…' : file ? 'Use selected image' : 'Use the SA logo'}
       </Button>
+    </div>
+  )
+}
+
+type WalletRow = { coin: string; network: string; address: string }
+
+/**
+ * Crypto wallets the Discord bot posts when a buyer picks "Crypto" in their
+ * ticket. Empty list = the buyer is told to wait for the owner's reply.
+ */
+export function CryptoWalletsForm({ wallets }: { wallets: WalletRow[] }) {
+  const router = useRouter()
+  const [pending, startTransition] = useTransition()
+  const [rows, setRows] = useState<WalletRow[]>(
+    wallets.length ? wallets : [{ coin: '', network: '', address: '' }]
+  )
+
+  function update(i: number, patch: Partial<WalletRow>) {
+    setRows((r) => r.map((row, idx) => (idx === i ? { ...row, ...patch } : row)))
+  }
+
+  function save() {
+    startTransition(async () => {
+      try {
+        await saveCryptoAddresses(rows)
+        toast.success('Crypto wallets saved')
+        router.refresh()
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : 'Could not save')
+      }
+    })
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="space-y-2">
+        {rows.map((row, i) => (
+          <div key={i} className="grid grid-cols-[90px_130px_1fr_auto] items-end gap-2">
+            <div className="space-y-1.5">
+              {i === 0 && <Label>Coin</Label>}
+              <Input
+                value={row.coin}
+                placeholder="BTC"
+                onChange={(e) => update(i, { coin: e.target.value })}
+              />
+            </div>
+            <div className="space-y-1.5">
+              {i === 0 && <Label>Network</Label>}
+              <Input
+                value={row.network}
+                placeholder="optional"
+                onChange={(e) => update(i, { network: e.target.value })}
+              />
+            </div>
+            <div className="space-y-1.5">
+              {i === 0 && <Label>Address</Label>}
+              <Input
+                value={row.address}
+                placeholder="wallet address"
+                className="font-mono text-xs"
+                onChange={(e) => update(i, { address: e.target.value })}
+              />
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              type="button"
+              onClick={() => setRows((r) => (r.length === 1 ? [{ coin: '', network: '', address: '' }] : r.filter((_, idx) => idx !== i)))}
+              aria-label="Remove wallet"
+            >
+              ✕
+            </Button>
+          </div>
+        ))}
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <Button
+          variant="outline"
+          type="button"
+          onClick={() => setRows((r) => [...r, { coin: '', network: '', address: '' }])}
+          disabled={rows.length >= 20}
+        >
+          Add wallet
+        </Button>
+        <Button onClick={save} disabled={pending}>
+          {pending ? 'Saving…' : 'Save wallets'}
+        </Button>
+      </div>
     </div>
   )
 }

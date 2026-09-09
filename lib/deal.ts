@@ -82,7 +82,10 @@ export async function createOrderForLead(leadId: string, input: CreateOrderInput
       profitCents: money.profitCents,
       commissionCents: money.commissionCents,
       netProfitCents: money.netProfitCents,
-      paymentMethod: input.paymentMethod ?? null,
+      // Fall back to what the buyer chose in the ticket (card / crypto).
+      paymentMethod: input.paymentMethod ?? lead.paymentMethod ?? null,
+      paymentLink: lead.paymentLink ?? null,
+      transactionId: lead.paymentRef ?? null,
       paymentStatus: 'paid',
       paidAt: new Date(),
       status: 'paid',

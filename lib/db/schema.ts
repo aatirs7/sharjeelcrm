@@ -258,6 +258,11 @@ export const leads = pgTable('leads', {
   interest: text('interest'),
   budgetCents: integer('budget_cents'),
   productId: uuid('product_id').references(() => products.id), // selected in the ticket menu
+  // How the buyer chose to pay in the ticket (card = Stripe checkout, crypto = wallet transfer).
+  paymentMethod: paymentMethod('payment_method'),
+  paymentLink: text('payment_link'), // Stripe checkout url when card was chosen
+  paymentRef: text('payment_ref'), // Stripe payment intent / charge id, or crypto tx hash
+  stripeSessionId: text('stripe_session_id'), // checkout session, matched by the webhook
   firstResponseAt: timestamp('first_response_at', { withTimezone: true }), // SLA tracking §36
   slaAlerted: boolean('sla_alerted').notNull().default(false),
   status: leadStatus('status').notNull().default('new_lead'),

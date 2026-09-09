@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 import { revalidatePath } from 'next/cache'
 import { requireAdmin } from '../auth'
-import { setSetting } from '../settings'
+import { setSetting, type CryptoAddress } from '../settings'
 import { setBotAvatar } from '../discord'
 import { logAudit } from '../audit'
 
@@ -26,6 +26,31 @@ export async function saveRepeatCommission(mode: 'first_only' | 'every_purchase'
   await requireAdmin()
   await setSetting('repeatCommission', mode)
   await logAudit({ action: 'settings.repeat', entity: 'settings', summary: `Repeat-customer commission → ${mode}` })
+  revalidatePath('/settings')
+}
+
+/**
+ * Wallet addresses the Discord bot hands to buyers who choose to pay in
+ * crypto. Blank rows are dropped; coin symbols are upper-cased.
+ */
+export async function saveCryptoAddresses(input: CryptoAddress[]): Promise<void> {
+  await requireAdmin()
+  const clean: CryptoAddress[] = []
+  for (const row of input.slice(0, 20)) {
+    const coin = String(row.coin ?? '').trim().toUpperCase().slice(0, 12)
+    const network = String(row.network ?? '').trim().slice(0, 40)
+    const address = String(row.address ?? '').trim().slice(0, 200)
+    if (!address) continue
+    if (!coin) throw new Error('Each wallet needs a coin (e.g. BTC)')
+    clean.push({ coin, network, address })
+  }
+  await setSetting('cryptoAddresses', clean)
+  await logAudit({
+    action: 'settings.crypto',
+    entity: 'settings',
+    summary: `Updated crypto wallets (${clean.length} saved)`,
+    meta: { coins: clean.map((c) => c.coin) },
+  })
   revalidatePath('/settings')
 }
 
