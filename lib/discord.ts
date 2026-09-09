@@ -352,3 +352,35 @@ export async function postTagButtons(
     ],
   })
 }
+
+const TICKET_TYPE_LABEL: Record<string, string> = {
+  purchase: '🛒 Purchase',
+  support: '🛟 Support',
+  question: '❓ Question',
+}
+
+/**
+ * Post a plain "new ticket" notice to the STAFF channel. The CRM has already
+ * auto-classified the ticket from the buyer's first message, so this is just a
+ * heads-up with the detected type and a link, no buttons for staff to press.
+ * Staff can still change the type on the deal page if the guess is ever wrong.
+ * No-op if STAFF_CHANNEL_ID is not configured.
+ */
+export async function postTicketNotice(
+  buyerUsername: string,
+  ticketLink: string,
+  ticketType: string | null
+): Promise<void> {
+  const staffChannel = process.env.STAFF_CHANNEL_ID
+  if (!staffChannel) return
+  const label = (ticketType && TICKET_TYPE_LABEL[ticketType]) || '❓ Question'
+  await dpost(`/channels/${staffChannel}/messages`, {
+    embeds: [
+      {
+        title: 'New ticket → lead',
+        description: `**${buyerUsername}** opened a ticket — [open it](${ticketLink})\nAuto-classified as ${label}.`,
+        color: 0x3b82f6,
+      },
+    ],
+  })
+}

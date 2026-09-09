@@ -13,7 +13,7 @@ import {
   classifyTicket,
   classifyTicketCategory,
   assignMemberRole,
-  postTagButtons,
+  postTicketNotice,
 } from '@/lib/discord'
 
 export const dynamic = 'force-dynamic'
@@ -23,7 +23,8 @@ const MAX_PER_RUN = 15
 
 /**
  * Hourly Vercel Cron: find tickets opened since the last run, create/enrich a
- * lead for each, and post the staff tag buttons. Watermark = the highest ticket
+ * lead for each (auto-classified from the buyer's first message), and post a
+ * plain staff notice with the detected type. Watermark = the highest ticket
  * channel id we've already turned into a lead (channel ids are time-ordered
  * snowflakes), so each run only handles genuinely new tickets.
  *
@@ -73,6 +74,7 @@ async function handle(req: Request): Promise<NextResponse> {
     const code = matchKnownPromo(message, promoCodes) ?? detectReferralCode(message)
     const email = message?.match(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/)?.[0] ?? null
 
+    const ticketType = classifyTicket(message)
     const result = await ingestTicketLead({
       discordUsername: buyer.username,
       discordUserId: buyer.id,
@@ -81,7 +83,7 @@ async function handle(req: Request): Promise<NextResponse> {
       interest: message,
       referralCode: code,
       source: code ? 'affiliate' : 'discord',
-      ticketType: classifyTicket(message),
+      ticketType,
       routeCategory: classifyTicketCategory(message),
       email,
     })
@@ -94,7 +96,7 @@ async function handle(req: Request): Promise<NextResponse> {
       }
     }
 
-    await postTagButtons(ch.id, buyer.username, ticketLink)
+    await postTicketNotice(buyer.username, ticketLink, ticketType)
     created++
   }
 
