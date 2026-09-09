@@ -15,6 +15,7 @@ import {
 import { PageHeader } from '@/components/page-header'
 import { CoachFormDialog } from '@/components/coaches/coach-form-dialog'
 import { CoachRowActions } from '@/components/coaches/coach-row-actions'
+import { CoachInviteLink } from '@/components/coaches/coach-invite-link'
 
 export const dynamic = 'force-dynamic'
 
@@ -35,6 +36,8 @@ export default async function CoachesPage() {
         meta={`${rows.length} total`}
         action={<CoachFormDialog mode="create" trigger={<Button>Add coach</Button>} />}
       />
+
+      <CoachInviteLink />
 
       <div className="overflow-x-auto rounded-xl border bg-card">
         <Table>
