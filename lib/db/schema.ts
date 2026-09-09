@@ -255,6 +255,9 @@ export const leads = pgTable('leads', {
   promoCodeUsed: text('promo_code_used'), // the matched promo code, snapshot
   interest: text('interest'),
   budgetCents: integer('budget_cents'),
+  productId: uuid('product_id').references(() => products.id), // selected in the ticket menu
+  firstResponseAt: timestamp('first_response_at', { withTimezone: true }), // SLA tracking §36
+  slaAlerted: boolean('sla_alerted').notNull().default(false),
   status: leadStatus('status').notNull().default('new_lead'),
   lostReason: lostReason('lost_reason'), // set when cancelled (spec §23)
   assignedRepId: text('assigned_rep_id').references(() => reps.id),

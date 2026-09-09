@@ -4,26 +4,12 @@ import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { eq } from 'drizzle-orm'
 import { db } from '../db'
-import {
-  leads,
-  customers,
-  orders,
-  coaches,
-  leadStatus,
-  leadSource,
-  lostReason,
-  paymentMethod,
-} from '../db/schema'
+import { leads, leadStatus, leadSource, lostReason, paymentMethod } from '../db/schema'
 import { logAudit } from '../audit'
 import { postAdminNotify } from '../discord-posts'
 import { requireRep } from '../auth'
-import { computeOrderMoney, commissionForSale, formatCents } from '../money'
-import { syncOrderCommission } from '../commissions'
-import {
-  createFollowUpTaskForLead,
-  createDeliveryTaskForOrder,
-  recomputeOrderRollups,
-} from '../automations'
+import { createFollowUpTaskForLead } from '../automations'
+import { createOrderForLead } from '../deal'
 
 type LeadStatusValue = (typeof leadStatus.enumValues)[number]
 type LeadSourceValue = (typeof leadSource.enumValues)[number]
@@ -161,92 +147,14 @@ export interface ConvertLeadInput {
  */
 export async function convertLeadToOrder(id: string, input: ConvertLeadInput): Promise<void> {
   await requireRep()
-  const lead = await db.query.leads.findFirst({ where: eq(leads.id, id) })
-  if (!lead) throw new Error('Lead not found')
-
-  // Upsert customer by discord username.
-  let customer = await db.query.customers.findFirst({
-    where: eq(customers.discordUsername, lead.discordUsername),
+  const orderId = await createOrderForLead(id, {
+    packageName: input.package,
+    priceCents: dollarsToCents(input.priceDollars) ?? 0,
+    paymentMethod: input.paymentMethod,
+    coachId: input.coachId ?? null,
   })
-  if (!customer) {
-    const [created] = await db
-      .insert(customers)
-      .values({ discordUsername: lead.discordUsername, displayName: lead.discordUsername })
-      .returning()
-    customer = created
-  }
-
-  // Resolve the coach: an explicit choice wins; otherwise prefer the lead's
-  // locked attribution, falling back to matching its raw referral code to a
-  // coach's promo code. (M2 sets leads.sourceCoachId at ingest.)
-  let coachId = input.coachId || lead.sourceCoachId || null
-  if (!coachId && lead.referralCode) {
-    const byCode = await db.query.coaches.findFirst({
-      where: eq(coaches.promoCode, lead.referralCode),
-    })
-    if (byCode) coachId = byCode.id
-  }
-  let coach: typeof coaches.$inferSelect | undefined
-  if (coachId) {
-    coach = await db.query.coaches.findFirst({ where: eq(coaches.id, coachId) })
-    if (!coach) coachId = null
-  }
-
-  const priceCents = dollarsToCents(input.priceDollars) ?? 0
-  const commissionCents = commissionForSale(priceCents, coach ?? null)
-  const money = computeOrderMoney({ priceCents, commissionCents })
-
-  const [order] = await db
-    .insert(orders)
-    .values({
-      leadId: id,
-      customerId: customer.id,
-      sourceCoachId: coachId,
-      promoCodeUsed: coach?.promoCode ?? lead.promoCodeUsed ?? null,
-      package: input.package.trim(),
-      priceCents,
-      supplierPayoutCents: money.supplierPayoutCents,
-      serviceFeeCents: money.serviceFeeCents,
-      profitCents: money.profitCents,
-      commissionCents: money.commissionCents,
-      netProfitCents: money.netProfitCents,
-      paymentMethod: input.paymentMethod,
-      paymentStatus: 'paid',
-      paidAt: new Date(),
-      status: 'paid',
-    })
-    .returning()
-
-  // Recording the sale completes the deal; that is what fires the commission.
-  await db.update(leads).set({ status: 'completed' }).where(eq(leads.id, id))
-
-  await createDeliveryTaskForOrder(order.id) // rule 3
-  await syncOrderCommission(order.id) // create the pending commission at completed (§12)
-  await recomputeOrderRollups(order.id) // rules 7 & 8
-
-  await logAudit({
-    action: 'deal.completed',
-    entity: 'deal',
-    entityRef: `DEAL-${lead.dealNumber}`,
-    summary: `Deal completed: ${input.package.trim()} for ${formatCents(priceCents)}${coach ? ` (coach ${coach.name})` : ''}`,
-    meta: { orderId: order.id, priceCents, coachId },
-  })
-
-  // Notify the private admin channel of the new sale (spec §25).
-  await postAdminNotify(
-    '💰 New sale',
-    [
-      `Deal: DEAL-${lead.dealNumber}`,
-      `Customer: ${lead.discordUsername}`,
-      `Product: ${input.package.trim()}`,
-      `Amount: ${formatCents(priceCents)}`,
-      coach ? `Referrer: ${coach.name} (${formatCents(commissionCents)} commission)` : 'Referrer: none',
-    ],
-    0x22c55e
-  )
-
   revalidatePath('/tickets')
   revalidatePath(`/tickets/${id}`)
   revalidatePath('/orders')
-  redirect(`/orders/${order.id}`)
+  redirect(`/orders/${orderId}`)
 }

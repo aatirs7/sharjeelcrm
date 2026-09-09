@@ -1,9 +1,14 @@
 import { NextResponse } from 'next/server'
 import crypto from 'node:crypto'
 import { applyTicketTag, type TicketTag } from '@/lib/ticket-tag'
+import { and, eq } from 'drizzle-orm'
+import { db } from '@/lib/db'
+import { leads, products, reps } from '@/lib/db/schema'
 import { createTicketChannel, postToChannel } from '@/lib/discord'
 import { ingestTicketLead } from '@/lib/leads-ingest'
 import { postAdminNotify } from '@/lib/discord-posts'
+import { createOrderForLead } from '@/lib/deal'
+import { formatCents } from '@/lib/money'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -51,6 +56,50 @@ const PANEL = {
   partner: { label: 'partner', welcome: 'thanks for your interest in becoming a referral partner!', ticketType: 'question' as const, route: 'PARTNER' },
   other: { label: 'question', welcome: 'thanks for reaching out!', ticketType: 'question' as const, route: 'SHOP' },
 }
+
+/** Post the ticket controls: a product picker (buyer) + staff action buttons. */
+async function postTicketControls(channelId: string): Promise<void> {
+  const list = await db.select().from(products).where(eq(products.active, true)).limit(25)
+  const rows: unknown[] = []
+  if (list.length) {
+    rows.push({
+      type: 1,
+      components: [
+        {
+          type: 3, // string select
+          custom_id: `product:${channelId}`,
+          placeholder: 'Select a product',
+          options: list.map((p) => ({
+            label: `${p.name} — ${formatCents(p.priceCents)}`.slice(0, 100),
+            value: p.id,
+          })),
+        },
+      ],
+    })
+  }
+  rows.push({
+    type: 1,
+    components: [
+      { type: 2, style: 1, label: 'Claim', emoji: { name: '🙋' }, custom_id: `deal:claim:${channelId}` },
+      { type: 2, style: 2, label: 'Mark Paid', emoji: { name: '💳' }, custom_id: `deal:paid:${channelId}` },
+      { type: 2, style: 3, label: 'Mark Completed', emoji: { name: '✅' }, custom_id: `deal:complete:${channelId}` },
+    ],
+  })
+  await postToChannel(channelId, {
+    embeds: [
+      {
+        title: 'Ticket controls',
+        description: 'Buyer: pick your product above. Staff: claim and progress the deal below.',
+        color: 0x2f66e6,
+      },
+    ],
+    components: rows,
+  })
+}
+
+const MANAGE = BigInt(16)
+const isStaff = (interaction: { member?: { permissions?: string } }) =>
+  (BigInt(interaction.member?.permissions ?? '0') & MANAGE) === MANAGE
 
 export async function POST(req: Request): Promise<NextResponse> {
   const publicKey = process.env.DISCORD_PUBLIC_KEY
@@ -104,10 +153,68 @@ export async function POST(req: Request): Promise<NextResponse> {
         [`Type: ${cfg.label}`, `Customer: ${user.username ?? user.id}`, `Channel: <#${channelId}>`],
         0x3b82f6
       )
+      await postTicketControls(channelId)
       return NextResponse.json({
         type: 4,
         data: { content: `Your ${cfg.label} ticket is ready: <#${channelId}>`, flags: EPHEMERAL },
       })
+    }
+
+    // Buyer picks a product from the ticket menu (spec §31).
+    if (customId.startsWith('product:')) {
+      const channelId = customId.split(':')[1]
+      const productId = interaction.data?.values?.[0]
+      const product = productId ? await db.query.products.findFirst({ where: eq(products.id, productId) }) : null
+      if (product) {
+        await db
+          .update(leads)
+          .set({ productId: product.id })
+          .where(eq(leads.discordChannelId, channelId))
+      }
+      return NextResponse.json({
+        type: 4,
+        data: { content: product ? `Selected **${product.name}** (${formatCents(product.priceCents)}).` : 'Not found.', flags: EPHEMERAL },
+      })
+    }
+
+    // Staff deal actions from inside the ticket (spec §41/§49).
+    if (customId.startsWith('deal:')) {
+      const [, action, channelId] = customId.split(':')
+      if (!isStaff(interaction)) {
+        return NextResponse.json({ type: 4, data: { content: 'Staff only.', flags: EPHEMERAL } })
+      }
+      const lead = await db.query.leads.findFirst({ where: eq(leads.discordChannelId, channelId) })
+      if (!lead) {
+        return NextResponse.json({ type: 4, data: { content: 'No deal is linked to this ticket.', flags: EPHEMERAL } })
+      }
+      const clicker = interaction.member?.user ?? interaction.user
+      const firstResp = lead.firstResponseAt ? {} : { firstResponseAt: new Date() }
+
+      if (action === 'claim') {
+        const rep = clicker?.id
+          ? await db.query.reps.findFirst({ where: and(eq(reps.discordUserId, clicker.id), eq(reps.active, true)) })
+          : null
+        const repId = rep?.id ?? 'local_admin'
+        await db.update(leads).set({ assignedRepId: repId, ...firstResp }).where(eq(leads.id, lead.id))
+        return NextResponse.json({ type: 4, data: { content: `Claimed by ${rep?.displayName ?? clicker?.username ?? 'staff'}.`, flags: EPHEMERAL } })
+      }
+      if (action === 'paid') {
+        await db.update(leads).set({ status: 'payment_received', ...firstResp }).where(eq(leads.id, lead.id))
+        await postAdminNotify('💳 Payment received', [`Deal: DEAL-${lead.dealNumber}`, `Customer: ${lead.discordUsername}`], 0x22c55e)
+        return NextResponse.json({ type: 4, data: { content: 'Marked payment received.', flags: EPHEMERAL } })
+      }
+      if (action === 'complete') {
+        if (!lead.productId) {
+          return NextResponse.json({ type: 4, data: { content: 'Pick a product from the menu first.', flags: EPHEMERAL } })
+        }
+        const product = await db.query.products.findFirst({ where: eq(products.id, lead.productId) })
+        if (!product) {
+          return NextResponse.json({ type: 4, data: { content: 'Selected product not found.', flags: EPHEMERAL } })
+        }
+        await createOrderForLead(lead.id, { packageName: product.name, priceCents: product.priceCents, paymentMethod: null })
+        return NextResponse.json({ type: 4, data: { content: `Deal DEAL-${lead.dealNumber} completed — ${product.name} (${formatCents(product.priceCents)}).`, flags: EPHEMERAL } })
+      }
+      return NextResponse.json({ type: PONG })
     }
 
     if (!customId.startsWith('tag:')) {

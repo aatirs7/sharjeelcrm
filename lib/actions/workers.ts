@@ -79,7 +79,10 @@ export async function generateWorkerCode(id: string): Promise<string> {
 export async function claimDeal(leadId: string): Promise<void> {
   const rep = await requireStaff()
   const lead = await db.query.leads.findFirst({ where: eq(leads.id, leadId) })
-  await db.update(leads).set({ assignedRepId: rep.id }).where(eq(leads.id, leadId))
+  await db
+    .update(leads)
+    .set({ assignedRepId: rep.id, ...(lead?.firstResponseAt ? {} : { firstResponseAt: new Date() }) })
+    .where(eq(leads.id, leadId))
   await logAudit({
     action: 'deal.claim',
     entity: 'deal',

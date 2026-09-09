@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server'
-import { eq, isNotNull, sql } from 'drizzle-orm'
+import { and, eq, isNotNull, isNull, lt, sql } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { leads, coaches } from '@/lib/db/schema'
 import { ingestTicketLead } from '@/lib/leads-ingest'
+import { postAdminNotify } from '@/lib/discord-posts'
 import {
   listTicketChannels,
   findBuyer,
@@ -97,6 +98,31 @@ async function handle(req: Request): Promise<NextResponse> {
     created++
   }
 
+  // SLA: alert on tickets still unclaimed with no response after 2 hours (§36).
+  const slaHours = Number(process.env.SLA_HOURS || '2')
+  const cutoff = new Date(Date.now() - slaHours * 3_600_000)
+  const stale = await db
+    .select()
+    .from(leads)
+    .where(
+      and(
+        eq(leads.status, 'new_lead'),
+        isNull(leads.assignedRepId),
+        isNull(leads.firstResponseAt),
+        eq(leads.slaAlerted, false),
+        lt(leads.createdAt, cutoff)
+      )
+    )
+    .limit(10)
+  for (const l of stale) {
+    await postAdminNotify(
+      '⏰ Ticket waiting',
+      [`Deal: DEAL-${l.dealNumber}`, `Customer: ${l.discordUsername}`, `Unclaimed for ${slaHours}h+`],
+      0xf59e0b
+    )
+    await db.update(leads).set({ slaAlerted: true }).where(eq(leads.id, l.id))
+  }
+
   return NextResponse.json({
     ok: true,
     ranAt: new Date().toISOString(),
@@ -104,6 +130,7 @@ async function handle(req: Request): Promise<NextResponse> {
     newSinceWatermark: fresh.length,
     leadsCreated: created,
     rolesAssigned,
+    slaAlerts: stale.length,
     noBuyer,
     capped: channels.filter((c) => BigInt(c.id) > watermark).length > MAX_PER_RUN,
   })
