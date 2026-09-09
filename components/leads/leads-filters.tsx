@@ -1,7 +1,7 @@
 'use client'
 
 import { useRouter, useSearchParams } from 'next/navigation'
-import { leadStatus } from '@/lib/db/schema'
+import { leadStatus, leadSource } from '@/lib/db/schema'
 import { titleCase } from '@/lib/labels'
 import type { Rep } from '@/lib/db/schema'
 import { Input } from '@/components/ui/input'
@@ -18,11 +18,17 @@ export function LeadsFilters({
   status,
   rep,
   code,
+  source = 'all',
+  product = 'all',
+  products = [],
 }: {
   reps: Rep[]
   status: string
   rep: string
   code: string
+  source?: string
+  product?: string
+  products?: { id: string; name: string }[]
 }) {
   const router = useRouter()
   const params = useSearchParams()
@@ -63,6 +69,36 @@ export function LeadsFilters({
           ))}
         </SelectContent>
       </Select>
+
+      <Select value={source} onValueChange={(v) => setParam('source', v ?? 'all')}>
+        <SelectTrigger className="w-full sm:w-[160px]">
+          <SelectValue placeholder="Source" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="all">All sources</SelectItem>
+          {leadSource.enumValues.map((s) => (
+            <SelectItem key={s} value={s}>
+              {titleCase(s)}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+
+      {products.length > 0 && (
+        <Select value={product} onValueChange={(v) => setParam('product', v ?? 'all')}>
+          <SelectTrigger className="w-full sm:w-[180px]">
+            <SelectValue placeholder="Product" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All products</SelectItem>
+            {products.map((p) => (
+              <SelectItem key={p.id} value={p.id}>
+                {p.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      )}
 
       <Input
         defaultValue={code}

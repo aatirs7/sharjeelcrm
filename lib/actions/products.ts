@@ -68,3 +68,26 @@ export async function setInventoryStatus(id: string, status: InvStatus): Promise
   await db.update(inventoryItems).set({ status }).where(eq(inventoryItems.id, id))
   revalidatePath('/inventory')
 }
+
+/**
+ * Attach an inventory item to an order (spec §32). Only an `available` item can
+ * be assigned, so the same item can never go to two customers. Throws otherwise.
+ */
+export async function assignInventoryToOrder(itemId: string, orderId: string): Promise<void> {
+  await requireAdmin()
+  const item = await db.query.inventoryItems.findFirst({ where: eq(inventoryItems.id, itemId) })
+  if (!item) throw new Error('Item not found')
+  if (item.status !== 'available' || item.orderId) throw new Error('Item is not available')
+  await db.update(inventoryItems).set({ status: 'sold', orderId }).where(eq(inventoryItems.id, itemId))
+  revalidatePath(`/orders/${orderId}`)
+  revalidatePath('/inventory')
+}
+
+export async function releaseInventory(itemId: string): Promise<void> {
+  await requireAdmin()
+  const item = await db.query.inventoryItems.findFirst({ where: eq(inventoryItems.id, itemId) })
+  const orderId = item?.orderId
+  await db.update(inventoryItems).set({ status: 'available', orderId: null }).where(eq(inventoryItems.id, itemId))
+  if (orderId) revalidatePath(`/orders/${orderId}`)
+  revalidatePath('/inventory')
+}

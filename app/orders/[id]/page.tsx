@@ -1,8 +1,8 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { desc, eq } from 'drizzle-orm'
+import { desc, eq, or } from 'drizzle-orm'
 import { db } from '@/lib/db'
-import { orders, issues, coaches } from '@/lib/db/schema'
+import { orders, issues, coaches, inventoryItems } from '@/lib/db/schema'
 import { isAdmin } from '@/lib/auth'
 import { formatCents, commissionExceedsProfit, SUPPLIER_PCT, SERVICE_PCT, PROFIT_PCT } from '@/lib/money'
 import { titleCase } from '@/lib/labels'
@@ -16,6 +16,7 @@ import { BuyerConfirmToggle } from '@/components/orders/buyer-confirm-toggle'
 import { OrderStatusChanger } from '@/components/orders/order-status-changer'
 import { ReportIssueDialog } from '@/components/issues/report-issue-dialog'
 import { AssignCoachControl } from '@/components/orders/assign-coach-control'
+import { InventoryAttach } from '@/components/inventory/inventory-attach'
 
 function Row({ label, value }: { label: string; value: React.ReactNode }) {
   return (
@@ -39,11 +40,17 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
   })
   if (!order) notFound()
 
-  const [orderIssues, admin, coachList] = await Promise.all([
+  const [orderIssues, admin, coachList, inv] = await Promise.all([
     db.select().from(issues).where(eq(issues.orderId, id)).orderBy(desc(issues.openedAt)),
     isAdmin(),
     db.select({ id: coaches.id, name: coaches.name, promoCode: coaches.promoCode }).from(coaches),
+    db
+      .select({ id: inventoryItems.id, label: inventoryItems.label, status: inventoryItems.status, orderId: inventoryItems.orderId })
+      .from(inventoryItems)
+      .where(or(eq(inventoryItems.orderId, id), eq(inventoryItems.status, 'available'))),
   ])
+  const attachedInv = inv.filter((i) => i.orderId === id).map((i) => ({ id: i.id, label: i.label }))
+  const availableInv = inv.filter((i) => i.status === 'available' && !i.orderId).map((i) => ({ id: i.id, label: i.label }))
 
   const wstate = warrantyState(order.warrantyEnd)
   const isDelivered = order.deliveryStatus === 'delivered'
@@ -106,6 +113,17 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
                   Commission exceeds profit — this sale nets negative.
                 </p>
               )}
+            </CardContent>
+          </Card>
+        )}
+
+        {admin && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Inventory</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <InventoryAttach orderId={order.id} attached={attachedInv} available={availableInv} />
             </CardContent>
           </Card>
         )}

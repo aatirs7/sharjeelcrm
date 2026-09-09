@@ -4,7 +4,9 @@ import { db } from '@/lib/db'
 import {
   leads,
   reps,
+  products,
   leadStatus as leadStatusEnum,
+  leadSource as leadSourceEnum,
   ticketType as ticketTypeEnum,
 } from '@/lib/db/schema'
 import { LeadStatusBadge, TicketTypeBadge } from '@/components/status-badge'
@@ -29,9 +31,9 @@ function fmtCreated(d: Date | string) {
 export default async function TicketsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string; rep?: string; code?: string; type?: string }>
+  searchParams: Promise<{ status?: string; rep?: string; code?: string; type?: string; source?: string; product?: string }>
 }) {
-  const { status, rep, code, type } = await searchParams
+  const { status, rep, code, type, source, product } = await searchParams
   const session = await getSession()
   const isWorker = session?.role === 'worker'
 
@@ -45,15 +47,20 @@ export default async function TicketsPage({
   // Workers see only their own deals (spec §2/§45).
   if (isWorker && session?.repId) conditions.push(eq(leads.assignedRepId, session.repId))
   else if (rep) conditions.push(eq(leads.assignedRepId, rep))
+  if (source && leadSourceEnum.enumValues.includes(source as never)) {
+    conditions.push(eq(leads.source, source as (typeof leadSourceEnum.enumValues)[number]))
+  }
+  if (product) conditions.push(eq(leads.productId, product))
   if (code) conditions.push(ilike(leads.referralCode, `%${code}%`))
 
-  const [rows, repList] = await Promise.all([
+  const [rows, repList, productList] = await Promise.all([
     db.query.leads.findMany({
       where: conditions.length ? and(...conditions) : undefined,
       orderBy: [desc(leads.createdAt)],
       with: { assignedRep: true },
     }),
     db.select().from(reps),
+    db.select({ id: products.id, name: products.name }).from(products),
   ])
 
   return (
@@ -69,7 +76,15 @@ export default async function TicketsPage({
         <TicketTypeTabs type={type ?? 'all'} />
       </div>
 
-      <LeadsFilters reps={repList} status={status ?? 'all'} rep={rep ?? 'all'} code={code ?? ''} />
+      <LeadsFilters
+        reps={repList}
+        status={status ?? 'all'}
+        rep={rep ?? 'all'}
+        code={code ?? ''}
+        source={source ?? 'all'}
+        product={product ?? 'all'}
+        products={productList}
+      />
 
       <div className="overflow-hidden rounded-xl border bg-card">
         <Table>
