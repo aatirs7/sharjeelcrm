@@ -3,7 +3,7 @@
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
-import { saveLeaderboardRewards, saveRepeatCommission } from '@/lib/actions/settings'
+import { applyBotAvatar, saveLeaderboardRewards, saveRepeatCommission } from '@/lib/actions/settings'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -88,5 +88,47 @@ export function RepeatForm({ mode }: { mode: 'first_only' | 'every_purchase' }) 
         <SelectItem value="every_purchase">Every purchase</SelectItem>
       </SelectContent>
     </Select>
+  )
+}
+
+/**
+ * Discord bot profile picture. One click applies the brand logo; the file
+ * picker lets an admin swap in any other png / jpg / gif.
+ */
+export function BotAvatarForm({ botName }: { botName: string | null }) {
+  const router = useRouter()
+  const [pending, startTransition] = useTransition()
+  const [file, setFile] = useState<File | null>(null)
+
+  function apply() {
+    startTransition(async () => {
+      try {
+        const fd = new FormData()
+        if (file) fd.set('avatar', file)
+        await applyBotAvatar(fd)
+        toast.success(`${botName ?? 'Bot'} profile picture updated`)
+        setFile(null)
+        router.refresh()
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : 'Could not change the picture')
+      }
+    })
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="space-y-1.5">
+        <Label htmlFor="bot-avatar-file">Or pick a different image</Label>
+        <Input
+          id="bot-avatar-file"
+          type="file"
+          accept="image/png,image/jpeg,image/gif"
+          onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+        />
+      </div>
+      <Button onClick={apply} disabled={pending}>
+        {pending ? 'Updating…' : file ? 'Use selected image' : 'Use the SA logo'}
+      </Button>
+    </div>
   )
 }

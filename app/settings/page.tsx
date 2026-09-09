@@ -1,13 +1,14 @@
 import { getSettings } from '@/lib/settings'
+import { getBotProfile } from '@/lib/discord'
 import { formatCents, FLAT_COMMISSION_CENTS } from '@/lib/money'
 import { Card, CardContent } from '@/components/ui/card'
 import { PageHeader, SectionLabel } from '@/components/page-header'
-import { RewardsForm, RepeatForm } from '@/components/settings/settings-forms'
+import { RewardsForm, RepeatForm, BotAvatarForm } from '@/components/settings/settings-forms'
 
 export const dynamic = 'force-dynamic'
 
 export default async function SettingsPage() {
-  const s = await getSettings()
+  const [s, bot] = await Promise.all([getSettings(), getBotProfile()])
 
   return (
     <div className="space-y-8">
@@ -33,6 +34,50 @@ export default async function SettingsPage() {
               </div>
               <RepeatForm mode={s.repeatCommission} />
             </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="space-y-3">
+        <SectionLabel>discord bot</SectionLabel>
+        <Card>
+          <CardContent className="space-y-4 py-5 text-sm">
+            <div>
+              <div className="font-medium">Profile picture</div>
+              <div className="text-muted-foreground">
+                The picture {bot?.username ?? 'the bot'} shows next to its messages in Discord.
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-6">
+              <div className="flex flex-col items-center gap-1.5">
+                {bot?.avatarUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={bot.avatarUrl} alt="" className="size-16 rounded-full border border-border/60" />
+                ) : (
+                  <div className="flex size-16 items-center justify-center rounded-full border border-dashed border-border/60 font-mono text-[10px] text-muted-foreground">
+                    none
+                  </div>
+                )}
+                <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+                  current
+                </span>
+              </div>
+              <span className="text-muted-foreground">→</span>
+              <div className="flex flex-col items-center gap-1.5">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src="/bot-avatar.png" alt="SA logo" className="size-16 rounded-full border border-border/60" />
+                <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+                  SA logo
+                </span>
+              </div>
+            </div>
+            {bot ? (
+              <BotAvatarForm botName={bot.username} />
+            ) : (
+              <p className="text-muted-foreground">
+                Bot token not configured, so the picture can&apos;t be changed from here.
+              </p>
+            )}
           </CardContent>
         </Card>
       </div>
