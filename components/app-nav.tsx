@@ -22,6 +22,7 @@ const STAFF_NAV: NavItem[] = [
   { href: "/tasks", label: "tasks", cap: "deals" },
   { href: "/me", label: "my performance", cap: "deals", personal: true },
   { href: "/revenue", label: "revenue", cap: "financials" },
+  { href: "/analytics", label: "analytics", cap: "financials" },
   { href: "/payouts", label: "payouts", cap: "payouts" },
   { href: "/coaches", label: "coaches", cap: "coaches" },
   { href: "/content", label: "content", cap: "coaches" },

@@ -41,7 +41,7 @@ export default async function SettingsPage() {
         <SectionLabel>data export</SectionLabel>
         <Card>
           <CardContent className="flex flex-wrap gap-2 py-5 text-sm">
-            {['deals', 'customers', 'commissions', 'payouts'].map((t) => (
+            {['deals', 'customers', 'commissions', 'payouts', 'leaderboard'].map((t) => (
               <a
                 key={t}
                 href={`/api/export?type=${t}`}

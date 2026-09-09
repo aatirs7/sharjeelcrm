@@ -45,6 +45,7 @@ export function landingFor(role: Role): string {
 export function capabilityForPath(pathname: string): Capability {
   const map: [string, Capability][] = [
     ['/revenue', 'financials'],
+    ['/analytics', 'financials'],
     ['/coaches', 'coaches'],
     ['/payouts', 'payouts'],
     ['/workers', 'workers'],

@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { desc, eq } from 'drizzle-orm'
 import { db } from '@/lib/db'
-import { leads, orders, coaches } from '@/lib/db/schema'
+import { leads, orders, coaches, auditLogs } from '@/lib/db/schema'
 import { formatCents } from '@/lib/money'
 import { titleCase } from '@/lib/labels'
 import { LeadStatusBadge, OrderStatusBadge } from '@/components/status-badge'
@@ -32,9 +32,15 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
   })
   if (!lead) notFound()
 
-  const [linkedOrders, coachList] = await Promise.all([
+  const [linkedOrders, coachList, timeline] = await Promise.all([
     db.select().from(orders).where(eq(orders.leadId, id)).orderBy(desc(orders.createdAt)),
     db.select().from(coaches),
+    db
+      .select()
+      .from(auditLogs)
+      .where(eq(auditLogs.entityRef, `DEAL-${lead.dealNumber}`))
+      .orderBy(desc(auditLogs.createdAt))
+      .limit(50),
   ])
 
   const isWon = lead.status === 'completed'
@@ -194,6 +200,37 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
                   ))}
                 </ul>
               )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Timeline</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ol className="space-y-3">
+                {timeline.map((e) => (
+                  <li key={e.id} className="flex gap-3 text-sm">
+                    <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-primary" />
+                    <div>
+                      <p>{e.summary}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {new Date(e.createdAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}
+                        {e.actorRole ? ` · ${e.actorRole}` : ''}
+                      </p>
+                    </div>
+                  </li>
+                ))}
+                <li className="flex gap-3 text-sm">
+                  <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-muted-foreground/40" />
+                  <div>
+                    <p>Deal created</p>
+                    <p className="text-xs text-muted-foreground">
+                      {new Date(lead.createdAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}
+                    </p>
+                  </div>
+                </li>
+              </ol>
             </CardContent>
           </Card>
         </div>

@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 import { desc } from 'drizzle-orm'
 import { db } from '@/lib/db'
-import { leads, customers, commissions, payouts, coaches } from '@/lib/db/schema'
+import { leads, customers, commissions, payouts, coaches, leaderboardMonths } from '@/lib/db/schema'
 import { PIN_COOKIE, parseSession } from '@/lib/session'
 
 export const dynamic = 'force-dynamic'
@@ -66,6 +66,13 @@ export async function GET(req: Request): Promise<NextResponse | Response> {
       ['coach', 'buyers', 'total', 'status', 'paid_at', 'method', 'ref'],
       ...rows.map((p) => [name.get(p.coachId) ?? p.coachId, p.buyerCount, money(p.totalCents), p.status, iso(p.paidAt), p.method, p.transactionRef]),
     ]
+  } else if (type === 'leaderboard') {
+    const rows = await db.select().from(leaderboardMonths).orderBy(desc(leaderboardMonths.month))
+    out = [['month', 'rank', 'coach', 'buyers', 'reward']]
+    for (const m of rows) {
+      const standings = (m.standings as { rank: number; name: string; buyers: number; rewardCents: number }[] | null) ?? []
+      for (const s of standings) out.push([m.month, s.rank, s.name, s.buyers, money(s.rewardCents)])
+    }
   } else {
     return NextResponse.json({ error: 'Unknown type' }, { status: 400 })
   }
