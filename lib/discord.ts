@@ -32,6 +32,57 @@ export async function ddelete(path: string): Promise<Response> {
   return fetch(`${API}${path}`, { method: 'DELETE', headers: authHeaders() })
 }
 
+export async function dpatch(path: string, body: unknown): Promise<Response> {
+  return fetch(`${API}${path}`, {
+    method: 'PATCH',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+}
+
+export interface BotProfile {
+  id: string
+  username: string
+  avatarUrl: string | null
+}
+
+/** Our own bot's name + profile picture, or null when the token isn't set / Discord is down. */
+export async function getBotProfile(): Promise<BotProfile | null> {
+  if (!TOKEN) return null
+  try {
+    const u = await dget<{ id: string; username: string; avatar: string | null }>('/users/@me')
+    return {
+      id: u.id,
+      username: u.username,
+      avatarUrl: u.avatar ? `https://cdn.discordapp.com/avatars/${u.id}/${u.avatar}.png?size=256` : null,
+    }
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Change the bot's Discord profile picture. `image` is the raw file bytes
+ * (png / jpg / gif, under 10 MB). Discord wants a base64 data URI. Throws
+ * with Discord's error text when rejected (e.g. rate-limited: avatars can
+ * only be changed a couple of times per ~10 minutes).
+ */
+export async function setBotAvatar(image: Buffer | Uint8Array, mime: string): Promise<BotProfile> {
+  if (!TOKEN) throw new Error('BOT_TOKEN is not configured')
+  const b64 = Buffer.from(image).toString('base64')
+  const res = await dpatch('/users/@me', { avatar: `data:${mime};base64,${b64}` })
+  if (!res.ok) {
+    const text = await res.text().catch(() => '')
+    throw new Error(`Discord rejected the picture (${res.status}) ${text}`.trim())
+  }
+  const u = (await res.json()) as { id: string; username: string; avatar: string | null }
+  return {
+    id: u.id,
+    username: u.username,
+    avatarUrl: u.avatar ? `https://cdn.discordapp.com/avatars/${u.id}/${u.avatar}.png?size=256` : null,
+  }
+}
+
 /** A user's avatar CDN url, or null. Best-effort (needs the bot token). */
 export async function getUserAvatarUrl(userId: string): Promise<string | null> {
   try {

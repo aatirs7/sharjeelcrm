@@ -8,7 +8,8 @@
     "start": "node bot.mjs",
     "audit": "node audit.mjs",
     "backfill": "node backfill.mjs",
-    "backfill:write": "node backfill.mjs --write"
+    "backfill:write": "node backfill.mjs --write",
+    "set-avatar": "node set-avatar.mjs"
   },
   "dependencies": {
     "discord.js": "^14.16.3"
