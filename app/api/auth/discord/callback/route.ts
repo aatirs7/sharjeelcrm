@@ -1,11 +1,29 @@
 import { NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
-import { and, eq } from 'drizzle-orm'
+import { randomBytes } from 'node:crypto'
+import { and, eq, sql } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { reps, coaches } from '@/lib/db/schema'
 import { PIN_COOKIE, PIN_MAX_AGE } from '@/lib/pin'
 import { mintSession } from '@/lib/session'
+import { COACH_JOIN_COOKIE } from '@/lib/coach-join-cookie'
 import { landingFor, type Role } from '@/lib/permissions'
+
+/** Slug for a coach handle: lowercase, dashed, unique via a short suffix. */
+async function uniqueCoachCode(name: string): Promise<string> {
+  const base =
+    name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 40) || 'coach'
+  const existing = await db
+    .select({ id: coaches.id })
+    .from(coaches)
+    .where(eq(coaches.coachCode, base))
+    .limit(1)
+  return existing.length === 0 ? base : `${base}-${randomBytes(2).toString('hex')}`
+}
 
 export const dynamic = 'force-dynamic'
 
@@ -91,9 +109,50 @@ export async function GET(req: Request): Promise<Response> {
       }
     }
 
+    // Self-serve coach signup: a join cookie is present and this Discord user is
+    // not yet a rep/coach/owner, so create their coach now with the code they
+    // chose. The unique index on promo_code is the final guard against a race.
+    const joinRaw = jar.get(COACH_JOIN_COOKIE)?.value
+    if (!token2 && joinRaw) {
+      try {
+        const join = JSON.parse(joinRaw) as { name?: string; promoCode?: string }
+        const name = (join.name ?? '').trim()
+        const promoCode = (join.promoCode ?? '').trim().toUpperCase()
+        if (name && promoCode) {
+          const taken = await db
+            .select({ id: coaches.id })
+            .from(coaches)
+            .where(sql`lower(${coaches.promoCode}) = lower(${promoCode})`)
+            .limit(1)
+          if (taken.length > 0) {
+            const r = NextResponse.redirect(`${baseUrl(req)}/coach/join?error=promo_taken`)
+            r.cookies.delete(COACH_JOIN_COOKIE)
+            r.cookies.delete('oauth_state')
+            return r
+          }
+          const [created] = await db
+            .insert(coaches)
+            .values({
+              name,
+              promoCode,
+              coachCode: await uniqueCoachCode(name),
+              discordUsername: me.username,
+              discordUserId: me.id,
+              status: 'active',
+            })
+            .returning({ id: coaches.id })
+          token2 = mintSession('coach', created.id)
+          dest = '/coach'
+        }
+      } catch {
+        /* fall through to not_linked if the cookie was malformed */
+      }
+    }
+
     if (!token2) return bounce('not_linked')
 
     const res = NextResponse.redirect(`${baseUrl(req)}${dest}`)
+    res.cookies.delete(COACH_JOIN_COOKIE)
     res.cookies.set(PIN_COOKIE, token2, {
       httpOnly: true,
       sameSite: 'lax',

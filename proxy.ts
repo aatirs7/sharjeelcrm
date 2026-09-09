@@ -6,7 +6,7 @@ import { getRoleOverrides } from '@/lib/settings'
 
 /**
  * Auth gate.
- *  - /login and /api/* are exempt (API routes self-authenticate).
+ *  - /login, /coach/join and /api/* are exempt (public signup + self-auth APIs).
  *  - No valid session -> /login.
  *  - Coaches can only see /coach/*; anything else redirects them to /coach.
  *  - Admins see everything.
@@ -16,7 +16,12 @@ import { getRoleOverrides } from '@/lib/settings'
 export async function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl
 
-  if (pathname === '/login' || pathname.startsWith('/api/') || pathname.startsWith('/ref/')) {
+  if (
+    pathname === '/login' ||
+    pathname === '/coach/join' ||
+    pathname.startsWith('/api/') ||
+    pathname.startsWith('/ref/')
+  ) {
     return NextResponse.next()
   }
 
