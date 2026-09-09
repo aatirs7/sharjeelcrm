@@ -4,7 +4,7 @@ import { useState, useTransition } from 'react'
 import { toast } from 'sonner'
 import { convertLeadToOrder } from '@/lib/actions/leads'
 import { paymentMethod } from '@/lib/db/schema'
-import { titleCase } from '@/lib/labels'
+import { paymentMethodLabel } from '@/lib/labels'
 import type { Coach } from '@/lib/db/schema'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -31,17 +31,19 @@ export function ConvertToOrderDialog({
   coaches,
   defaultPackage,
   defaultPriceDollars,
+  defaultMethod,
 }: {
   leadId: string
   coaches: Coach[]
   defaultPackage: string
   defaultPriceDollars: string
+  defaultMethod?: string | null
 }) {
   const [open, setOpen] = useState(false)
   const [pending, startTransition] = useTransition()
   const [pkg, setPkg] = useState(defaultPackage)
   const [price, setPrice] = useState(defaultPriceDollars)
-  const [method, setMethod] = useState<string>('paypal')
+  const [method, setMethod] = useState<string>(defaultMethod ?? 'paypal')
   const [coachId, setCoachId] = useState<string>('none')
 
   function submit() {
@@ -101,7 +103,7 @@ export function ConvertToOrderDialog({
                 <SelectContent>
                   {paymentMethod.enumValues.map((m) => (
                     <SelectItem key={m} value={m}>
-                      {titleCase(m)}
+                      {paymentMethodLabel(m)}
                     </SelectItem>
                   ))}
                 </SelectContent>

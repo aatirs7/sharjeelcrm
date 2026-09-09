@@ -9,6 +9,8 @@ import { ingestTicketLead } from '@/lib/leads-ingest'
 import { postAdminNotify } from '@/lib/discord-posts'
 import { createOrderForLead } from '@/lib/deal'
 import { formatCents } from '@/lib/money'
+import { getSetting } from '@/lib/settings'
+import { createCheckoutSession, stripeStatus } from '@/lib/stripe'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -97,6 +99,32 @@ async function postTicketControls(channelId: string): Promise<void> {
   })
 }
 
+/**
+ * After the buyer picks a product, ask how they want to pay. Card opens a
+ * Stripe Checkout link; crypto posts the saved wallets (or asks them to wait
+ * for the owner when none are saved).
+ */
+async function postPaymentPicker(channelId: string, productName: string, priceCents: number): Promise<void> {
+  await postToChannel(channelId, {
+    embeds: [
+      {
+        title: '💳 How would you like to pay?',
+        description: `**${productName}** — ${formatCents(priceCents)}\n\nCard is instant via Stripe. Crypto is sent to one of our wallets and confirmed by staff.`,
+        color: 0x2f66e6,
+      },
+    ],
+    components: [
+      {
+        type: 1,
+        components: [
+          { type: 2, style: 3, label: 'Card (Stripe)', emoji: { name: '💳' }, custom_id: `pay:card:${channelId}` },
+          { type: 2, style: 1, label: 'Crypto', emoji: { name: '🪙' }, custom_id: `pay:crypto:${channelId}` },
+        ],
+      },
+    ],
+  })
+}
+
 const MANAGE = BigInt(16)
 const isStaff = (interaction: { member?: { permissions?: string } }) =>
   (BigInt(interaction.member?.permissions ?? '0') & MANAGE) === MANAGE
@@ -166,15 +194,160 @@ export async function POST(req: Request): Promise<NextResponse> {
       const productId = interaction.data?.values?.[0]
       const product = productId ? await db.query.products.findFirst({ where: eq(products.id, productId) }) : null
       if (product) {
-        await db
-          .update(leads)
-          .set({ productId: product.id })
-          .where(eq(leads.discordChannelId, channelId))
+        const lead = await db.query.leads.findFirst({ where: eq(leads.discordChannelId, channelId) })
+        const patch: Partial<typeof leads.$inferInsert> = { productId: product.id }
+        // Changing product invalidates any checkout link made for the old price.
+        if (lead?.productId && lead.productId !== product.id) {
+          patch.paymentLink = null
+          patch.stripeSessionId = null
+        }
+        if (lead && (lead.status === 'new_lead' || lead.status === 'contacted')) patch.status = 'product_selected'
+        await db.update(leads).set(patch).where(eq(leads.discordChannelId, channelId))
+        await postPaymentPicker(channelId, product.name, product.priceCents)
       }
       return NextResponse.json({
         type: 4,
-        data: { content: product ? `Selected **${product.name}** (${formatCents(product.priceCents)}).` : 'Not found.', flags: EPHEMERAL },
+        data: { content: product ? `Selected **${product.name}** (${formatCents(product.priceCents)}). Pick a payment method below.` : 'Not found.', flags: EPHEMERAL },
       })
+    }
+
+    // Buyer picks how to pay: card (Stripe Checkout) or crypto (wallet transfer).
+    if (customId.startsWith('pay:')) {
+      const [, method, channelId] = customId.split(':')
+      const lead = await db.query.leads.findFirst({ where: eq(leads.discordChannelId, channelId) })
+      if (!lead) {
+        return NextResponse.json({ type: 4, data: { content: 'No deal is linked to this ticket.', flags: EPHEMERAL } })
+      }
+      const clicker = interaction.member?.user ?? interaction.user
+      if (lead.discordUserId && clicker?.id !== lead.discordUserId && !isStaff(interaction)) {
+        return NextResponse.json({ type: 4, data: { content: 'Only the ticket owner can choose a payment method.', flags: EPHEMERAL } })
+      }
+      if (['payment_received', 'fulfillment', 'completed'].includes(lead.status)) {
+        return NextResponse.json({ type: 4, data: { content: 'This ticket is already paid.', flags: EPHEMERAL } })
+      }
+      const product = lead.productId
+        ? await db.query.products.findFirst({ where: eq(products.id, lead.productId) })
+        : null
+      if (!product) {
+        return NextResponse.json({ type: 4, data: { content: 'Pick a product from the menu first.', flags: EPHEMERAL } })
+      }
+      const guildId = interaction.guild_id
+      const ticketUrl = lead.ticketLink ?? (guildId ? `https://discord.com/channels/${guildId}/${channelId}` : 'https://discord.com/channels/@me')
+      const dealLine = `Deal: DEAL-${lead.dealNumber}`
+      const customerLine = `Customer: ${lead.discordUsername}`
+      const productLine = `Product: ${product.name} (${formatCents(product.priceCents)})`
+
+      if (method === 'card') {
+        const stripe = stripeStatus()
+        // Stripe needs at least $0.50; anything smaller falls back to a manual link.
+        if (stripe.canCharge && product.priceCents >= 50) {
+          try {
+            const session = await createCheckoutSession({
+              leadId: lead.id,
+              dealNumber: lead.dealNumber,
+              productName: product.name,
+              amountCents: product.priceCents,
+              returnUrl: ticketUrl,
+              customerLabel: lead.discordUsername,
+            })
+            await db
+              .update(leads)
+              .set({ paymentMethod: 'card', paymentLink: session.url, stripeSessionId: session.id, status: 'waiting_payment' })
+              .where(eq(leads.id, lead.id))
+            await postToChannel(channelId, {
+              embeds: [
+                {
+                  title: '💳 Pay by card',
+                  description: `**${product.name}** — ${formatCents(product.priceCents)}\n\nClick the button to pay securely with Stripe. ${process.env.STRIPE_WEBHOOK_SECRET ? 'This ticket updates automatically once the payment goes through.' : 'Let us know here once you have paid.'}`,
+                  color: 0x22c55e,
+                },
+              ],
+              components: [
+                { type: 1, components: [{ type: 2, style: 5, label: 'Pay with Stripe', emoji: { name: '🔒' }, url: session.url }] },
+              ],
+            })
+            await postAdminNotify('💳 Card checkout sent', [dealLine, customerLine, productLine, 'Stripe Checkout link posted in the ticket.'], 0x3b82f6)
+            return NextResponse.json({ type: 4, data: { content: 'Your secure card payment link is posted above.', flags: EPHEMERAL } })
+          } catch (e) {
+            await postAdminNotify(
+              '⚠️ Stripe checkout failed',
+              [dealLine, customerLine, productLine, `Error: ${e instanceof Error ? e.message : 'unknown'}`, 'Send the buyer a payment link by hand.'],
+              0xf59e0b
+            )
+          }
+        }
+        // No usable Stripe key (or Stripe errored): staff send the link by hand.
+        await db
+          .update(leads)
+          .set({ paymentMethod: 'card', status: 'waiting_payment' })
+          .where(eq(leads.id, lead.id))
+        await postToChannel(channelId, {
+          embeds: [
+            {
+              title: '💳 Card payment',
+              description: `**${product.name}** — ${formatCents(product.priceCents)}\n\nA team member will send your secure card payment link here shortly.`,
+              color: 0x3b82f6,
+            },
+          ],
+        })
+        if (stripe.configured && !stripe.canCharge) {
+          await postAdminNotify(
+            '💳 Buyer chose card — send a link',
+            [dealLine, customerLine, productLine, 'STRIPE_SECRET_KEY is a restricted key; a full sk_ key is needed to create checkout links automatically.'],
+            0xf59e0b
+          )
+        } else if (!stripe.configured) {
+          await postAdminNotify(
+            '💳 Buyer chose card — send a link',
+            [dealLine, customerLine, productLine, 'Stripe is not connected, so the link must be sent by hand.'],
+            0xf59e0b
+          )
+        }
+        return NextResponse.json({ type: 4, data: { content: 'Noted — a team member will send your card payment link shortly.', flags: EPHEMERAL } })
+      }
+
+      if (method === 'crypto') {
+        const wallets = await getSetting('cryptoAddresses')
+        await db
+          .update(leads)
+          .set({ paymentMethod: 'crypto', paymentLink: null, stripeSessionId: null, status: 'waiting_payment' })
+          .where(eq(leads.id, lead.id))
+        if (wallets.length > 0) {
+          const list = wallets
+            .map((w) => `**${w.coin}**${w.network ? ` · ${w.network}` : ''}\n\`${w.address}\``)
+            .join('\n\n')
+          await postToChannel(channelId, {
+            embeds: [
+              {
+                title: '🪙 Pay with crypto',
+                description:
+                  `**${product.name}** — ${formatCents(product.priceCents)}\n\n` +
+                  `Send the equivalent of **${formatCents(product.priceCents)}** to one of these wallets:\n\n${list}\n\n` +
+                  'Double-check the network before sending. Then reply here with the transaction hash (or a screenshot) and a team member will confirm your payment.',
+                color: 0xf59e0b,
+              },
+            ],
+          })
+          await postAdminNotify('🪙 Crypto payment requested', [dealLine, customerLine, productLine, `Wallets posted: ${wallets.map((w) => w.coin).join(', ')}. Confirm the transfer, then press Mark Paid.`], 0xf59e0b)
+          return NextResponse.json({ type: 4, data: { content: 'Wallet addresses are posted above. Reply with your transaction hash once sent.', flags: EPHEMERAL } })
+        }
+        await postToChannel(channelId, {
+          embeds: [
+            {
+              title: '🪙 Pay with crypto',
+              description: `**${product.name}** — ${formatCents(product.priceCents)}\n\nPlease hold on — a team member will reply here with a wallet address shortly.`,
+              color: 0xf59e0b,
+            },
+          ],
+        })
+        await postAdminNotify(
+          '🪙 Crypto payment requested — reply needed',
+          [dealLine, customerLine, productLine, `The buyer is waiting for a wallet address in <#${channelId}>.`, 'Tip: save wallets under Settings → Payments and the bot will post them automatically next time.'],
+          0xf59e0b
+        )
+        return NextResponse.json({ type: 4, data: { content: 'Noted — a team member will reply with a wallet address shortly.', flags: EPHEMERAL } })
+      }
+      return NextResponse.json({ type: PONG })
     }
 
     // Staff deal actions from inside the ticket (spec §41/§49).
@@ -211,7 +384,7 @@ export async function POST(req: Request): Promise<NextResponse> {
         if (!product) {
           return NextResponse.json({ type: 4, data: { content: 'Selected product not found.', flags: EPHEMERAL } })
         }
-        await createOrderForLead(lead.id, { packageName: product.name, priceCents: product.priceCents, paymentMethod: null })
+        await createOrderForLead(lead.id, { packageName: product.name, priceCents: product.priceCents, paymentMethod: lead.paymentMethod ?? null })
         return NextResponse.json({ type: 4, data: { content: `Deal DEAL-${lead.dealNumber} completed — ${product.name} (${formatCents(product.priceCents)}).`, flags: EPHEMERAL } })
       }
       return NextResponse.json({ type: PONG })

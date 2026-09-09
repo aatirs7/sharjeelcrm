@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { updateOrderPayment } from '@/lib/actions/orders'
 import { paymentMethod, paymentStatus } from '@/lib/db/schema'
-import { titleCase } from '@/lib/labels'
+import { paymentMethodLabel, titleCase } from '@/lib/labels'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -66,7 +66,7 @@ export function OrderPaymentForm({
             <SelectContent>
               {paymentMethod.enumValues.map((m) => (
                 <SelectItem key={m} value={m}>
-                  {titleCase(m)}
+                  {paymentMethodLabel(m)}
                 </SelectItem>
               ))}
             </SelectContent>

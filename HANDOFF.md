@@ -88,6 +88,22 @@ netProfitCents      = profit - commission
 
 ---
 
+### 4b. Buyer payments from the Discord ticket
+
+- After the buyer picks a product from the ticket menu, the bot asks **Card (Stripe)** or
+  **Crypto** (`pay:card:<channel>` / `pay:crypto:<channel>` buttons in
+  `app/api/discord/interactions/route.ts`). The choice is stored on the deal
+  (`leads.payment_method`, migration `0016`) and flows through to the order.
+- **Card:** with a full `sk_` key, `createCheckoutSession()` (`lib/stripe.ts`) creates a hosted
+  Stripe Checkout link for the product price and the bot posts it in the ticket. The webhook
+  `app/api/stripe/webhook/route.ts` (`checkout.session.completed`, signed with
+  `STRIPE_WEBHOOK_SECRET`) then moves the deal to `payment_received`, stores the payment
+  intent id, tells the buyer, and notifies staff. Without an `sk_` key (or on a Stripe
+  error) the buyer is told staff will send a link, and staff are pinged.
+- **Crypto:** wallets saved under **Settings → Payments** (`settings.cryptoAddresses`) are
+  posted in the ticket with "reply with your tx hash". With none saved the buyer is told to
+  wait and staff are pinged to reply with an address. Staff confirm with **Mark Paid**.
+
 ## 5. Auth — shared PIN gate
 
 - `proxy.ts` redirects everything except `/login` and `/api/*` to the PIN screen.
@@ -130,7 +146,8 @@ netProfitCents      = profit - commission
 | `APP_PIN` | self | 5-digit gate PIN (default `11005`) |
 | `APP_PIN_SECRET` | self (`openssl rand -hex 32`) | HMAC salt for the session cookie |
 | `CRON_SECRET` | self | Bearer for Vercel Cron routes |
-| `STRIPE_SECRET_KEY` | Stripe (`sk_`/`rk_`) | live money |
+| `STRIPE_SECRET_KEY` | Stripe (`sk_`/`rk_`) | live money; `sk_` also creates Checkout links |
+| `STRIPE_WEBHOOK_SECRET` | Stripe webhook endpoint → `/api/stripe/webhook` | auto-marks card payments received |
 | `BOT_TOKEN` | Discord bot | REST calls (poll) |
 | `GUILD_ID` | Discord | server id |
 | `STAFF_CHANNEL_ID` | Discord | where tag buttons post |

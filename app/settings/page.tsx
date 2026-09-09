@@ -1,14 +1,17 @@
 import { getSettings } from '@/lib/settings'
 import { getBotProfile } from '@/lib/discord'
+import { stripeStatus } from '@/lib/stripe'
 import { formatCents, FLAT_COMMISSION_CENTS } from '@/lib/money'
 import { Card, CardContent } from '@/components/ui/card'
 import { PageHeader, SectionLabel } from '@/components/page-header'
-import { RewardsForm, RepeatForm, BotAvatarForm } from '@/components/settings/settings-forms'
+import { RewardsForm, RepeatForm, BotAvatarForm, CryptoWalletsForm } from '@/components/settings/settings-forms'
 
 export const dynamic = 'force-dynamic'
 
 export default async function SettingsPage() {
   const [s, bot] = await Promise.all([getSettings(), getBotProfile()])
+  const stripe = stripeStatus()
+  const webhookSet = !!process.env.STRIPE_WEBHOOK_SECRET
 
   return (
     <div className="space-y-8">
@@ -33,6 +36,54 @@ export default async function SettingsPage() {
                 </div>
               </div>
               <RepeatForm mode={s.repeatCommission} />
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="space-y-3">
+        <SectionLabel>payments</SectionLabel>
+        <Card>
+          <CardContent className="space-y-4 py-5 text-sm">
+            <p className="text-muted-foreground">
+              Once a buyer picks a product in their Discord ticket, the bot asks whether they want to pay by
+              card or crypto.
+            </p>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <div className="font-medium">Card (Stripe)</div>
+                <div className="text-muted-foreground">
+                  {stripe.canCharge
+                    ? `The bot posts a Stripe checkout link for the product price (${stripe.mode} mode).`
+                    : stripe.configured
+                      ? 'The Stripe key is read-only, so a team member has to send the checkout link by hand.'
+                      : 'Stripe is not connected, so a team member has to send the checkout link by hand.'}
+                  {stripe.canCharge
+                    ? webhookSet
+                      ? ' Paid tickets are marked automatically.'
+                      : ' Add STRIPE_WEBHOOK_SECRET so paid tickets are marked automatically.'
+                    : ''}
+                </div>
+              </div>
+              <span
+                className={`rounded-full px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.18em] ${
+                  stripe.canCharge
+                    ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                    : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
+                }`}
+              >
+                {stripe.canCharge ? 'connected' : stripe.configured ? 'read-only' : 'not connected'}
+              </span>
+            </div>
+            <div className="space-y-3 border-t border-border/60 pt-4">
+              <div>
+                <div className="font-medium">Crypto wallets</div>
+                <div className="text-muted-foreground">
+                  When a buyer chooses crypto, the bot posts these wallets in the ticket. Leave the list
+                  empty and the buyer is asked to wait for your reply instead.
+                </div>
+              </div>
+              <CryptoWalletsForm wallets={s.cryptoAddresses} />
             </div>
           </CardContent>
         </Card>
