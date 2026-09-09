@@ -1,12 +1,13 @@
 import { redirect } from 'next/navigation'
 import { eq } from 'drizzle-orm'
 import { db } from '@/lib/db'
-import { coaches, leads, commissions, coachContent } from '@/lib/db/schema'
+import { coaches, leads, commissions, coachContent, payoutRequests } from '@/lib/db/schema'
 import { getCurrentCoachId, isAdmin } from '@/lib/auth'
 import { getCoachPayouts } from '@/lib/queries/payouts'
 import { formatCents } from '@/lib/money'
 import { titleCase } from '@/lib/labels'
 import { MetricCard } from '@/components/dashboard/metric-card'
+import { RequestPayoutButton } from '@/components/payouts/payout-request'
 import { PageHeader, SectionLabel } from '@/components/page-header'
 import { Card, CardContent } from '@/components/ui/card'
 import {
@@ -35,12 +36,14 @@ export default async function CoachDashboard() {
   const coach = await db.query.coaches.findFirst({ where: eq(coaches.id, coachId!) })
   if (!coach) redirect('/login')
 
-  const [myLeads, ledger, payoutHistory, content] = await Promise.all([
+  const [myLeads, ledger, payoutHistory, content, myRequests] = await Promise.all([
     db.select().from(leads).where(eq(leads.sourceCoachId, coachId!)),
     db.select().from(commissions).where(eq(commissions.coachId, coachId!)),
     getCoachPayouts(coachId!),
     db.select().from(coachContent).where(eq(coachContent.coachId, coachId!)),
+    db.select().from(payoutRequests).where(eq(payoutRequests.coachId, coachId!)),
   ])
+  const hasPendingRequest = myRequests.some((r) => r.status === 'pending')
 
   const ticketsOpened = myLeads.length
   const confirmedBuyers = ledger.filter((c) => c.status === 'approved' || c.status === 'paid').length
@@ -78,6 +81,9 @@ export default async function CoachDashboard() {
           <MetricCard label="Paid to date" value={formatCents(paidCents)} />
           <MetricCard label="Commission rate" value={`${(Number(coach.commissionRate) * 100).toFixed(0)}%`} />
         </div>
+        <div className="flex justify-center pt-1">
+          <RequestPayoutButton availableCents={approvedCents} hasPending={hasPendingRequest} />
+        </div>
       </div>
 
       <div className="space-y-3">
@@ -89,8 +95,14 @@ export default async function CoachDashboard() {
               <span className="font-mono">{coach.promoCode ?? '—'}</span>
             </div>
             <div className="flex flex-wrap justify-between gap-2">
-              <span className="text-muted-foreground">Tracking link</span>
-              <span className="max-w-[70%] truncate font-mono text-xs">{coach.trackingLink ?? '—'}</span>
+              <span className="text-muted-foreground">Referral link</span>
+              <span className="max-w-[70%] truncate font-mono text-xs">
+                {coach.promoCode ? `shahmircrm.vercel.app/ref/${coach.promoCode}` : '—'}
+              </span>
+            </div>
+            <div className="flex flex-wrap justify-between gap-2">
+              <span className="text-muted-foreground">Link clicks</span>
+              <span className="font-mono">{coach.referralClicks}</span>
             </div>
             <div className="flex flex-wrap justify-between gap-2">
               <span className="text-muted-foreground">Discord invite</span>

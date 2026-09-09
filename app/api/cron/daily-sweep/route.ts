@@ -6,6 +6,7 @@ import { flagExpiringWarranties } from '@/lib/automations'
 import { sweepCommissions, assignMonthlyTiers, finalizePreviousMonth } from '@/lib/commissions'
 import { postWeeklyLeaderboard, postDailyReport } from '@/lib/discord-posts'
 import { deleteStaleTicketChannels } from '@/lib/discord'
+import { scanFraud } from '@/lib/fraud'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -36,6 +37,7 @@ async function handle(req: Request): Promise<NextResponse> {
   const archivedMonth = await finalizePreviousMonth()
   // Post the weekly leaderboard once a week (Mondays) to the affiliates channel.
   const leaderboardPosted = now.getDay() === 1 ? await postWeeklyLeaderboard() : false
+  const fraudFlagged = await scanFraud()
   const dailyReportPosted = await postDailyReport()
 
   // Prune ticket channels older than the retention window so the guild stays
@@ -70,6 +72,7 @@ async function handle(req: Request): Promise<NextResponse> {
     tiersChanged,
     archivedMonth,
     leaderboardPosted,
+    fraudFlagged,
     dailyReportPosted,
     ticketChannelsEligible: ticketCleanup.eligible,
     ticketChannelsDeleted: ticketCleanup.deleted,

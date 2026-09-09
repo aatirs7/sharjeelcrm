@@ -15,7 +15,7 @@ import { can, capabilityForPath, landingFor } from '@/lib/permissions'
 export function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl
 
-  if (pathname === '/login' || pathname.startsWith('/api/')) {
+  if (pathname === '/login' || pathname.startsWith('/api/') || pathname.startsWith('/ref/')) {
     return NextResponse.next()
   }
 

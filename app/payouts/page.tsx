@@ -1,9 +1,10 @@
 import { and, eq } from 'drizzle-orm'
 import { db } from '@/lib/db'
-import { commissions, coaches as coachesTable } from '@/lib/db/schema'
+import { commissions, coaches as coachesTable, payoutRequests } from '@/lib/db/schema'
 import { getPayoutSummary } from '@/lib/queries/payouts'
 import { formatCents } from '@/lib/money'
 import { titleCase } from '@/lib/labels'
+import { PayoutRequestActions } from '@/components/payouts/payout-request'
 import {
   Table,
   TableBody,
@@ -37,6 +38,19 @@ export default async function PayoutsPage() {
     .leftJoin(coachesTable, eq(commissions.coachId, coachesTable.id))
     .where(and(eq(commissions.status, 'reversed'), eq(commissions.needsReview, true)))
 
+  // Pending payout requests from coaches (spec §28).
+  const requests = await db
+    .select({
+      id: payoutRequests.id,
+      amountCents: payoutRequests.amountCents,
+      note: payoutRequests.note,
+      createdAt: payoutRequests.createdAt,
+      coachName: coachesTable.name,
+    })
+    .from(payoutRequests)
+    .leftJoin(coachesTable, eq(payoutRequests.coachId, coachesTable.id))
+    .where(eq(payoutRequests.status, 'pending'))
+
   return (
     <div className="space-y-8">
       <PageHeader
@@ -56,6 +70,36 @@ export default async function PayoutsPage() {
               .map((r) => `${r.coachName ?? '—'} ${formatCents(r.amountCents)} (${r.reason ?? 'refund'})`)
               .join(' · ')}
           </p>
+        </div>
+      )}
+
+      {requests.length > 0 && (
+        <div className="space-y-3">
+          <SectionLabel>payout requests</SectionLabel>
+          <div className="overflow-hidden rounded-xl border bg-card">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Coach</TableHead>
+                  <TableHead className="text-right">Requested</TableHead>
+                  <TableHead>Note</TableHead>
+                  <TableHead className="text-right">Action</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {requests.map((r) => (
+                  <TableRow key={r.id}>
+                    <TableCell className="font-medium">{r.coachName ?? '—'}</TableCell>
+                    <TableCell className="text-right tabular-nums font-medium">{formatCents(r.amountCents)}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">{r.note ?? '—'}</TableCell>
+                    <TableCell>
+                      <PayoutRequestActions id={r.id} />
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
         </div>
       )}
 
