@@ -4,6 +4,7 @@ import { db } from '@/lib/db'
 import { coaches, leads, orders, commissions, coachContent, payoutRequests } from '@/lib/db/schema'
 import { getCurrentCoachId, isAdmin } from '@/lib/auth'
 import { getCoachPayouts } from '@/lib/queries/payouts'
+import { getLeaderboard } from '@/lib/queries/leaderboard'
 import { getCoachAchievements, ACHIEVEMENTS } from '@/lib/achievements'
 import { formatCents } from '@/lib/money'
 import { titleCase } from '@/lib/labels'
@@ -47,6 +48,14 @@ export default async function CoachDashboard() {
     getCoachAchievements(coachId!),
   ])
   const unlocked = new Set(achievements)
+
+  // Weekly leaderboard, so a coach can see where they rank. Show the top ten,
+  // plus their own row if they sit outside it. Highlight their row throughout.
+  const board = await getLeaderboard()
+  const myRank = board.findIndex((r) => r.coachId === coachId)
+  const MEDAL = ['🥇', '🥈', '🥉']
+  const topBoard = board.slice(0, 10)
+  const showMineBelow = myRank >= 10
 
   // Referral history with masked customer handles (§15).
   const commissionByOrder = new Map(ledger.map((c) => [c.orderId, c]))
@@ -107,6 +116,55 @@ export default async function CoachDashboard() {
         <div className="flex justify-center pt-1">
           <RequestPayoutButton availableCents={approvedCents} hasPending={hasPendingRequest} />
         </div>
+      </div>
+
+      <div className="space-y-3">
+        <SectionLabel>leaderboard · this week</SectionLabel>
+        <div className="overflow-x-auto rounded-xl border bg-card">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-10">#</TableHead>
+                <TableHead>Coach</TableHead>
+                <TableHead className="text-right">This week</TableHead>
+                <TableHead className="text-right">This month</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {board.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={4} className="py-8 text-center text-muted-foreground">
+                    No confirmed buyers yet. Be the first.
+                  </TableCell>
+                </TableRow>
+              )}
+              {topBoard.map((r, i) => {
+                const mine = r.coachId === coachId
+                return (
+                  <TableRow key={r.coachId} className={mine ? 'bg-primary/5' : ''}>
+                    <TableCell className="tabular-nums">{MEDAL[i] ?? i + 1}</TableCell>
+                    <TableCell className={mine ? 'font-semibold' : 'font-medium'}>
+                      {mine ? 'You' : r.name}
+                    </TableCell>
+                    <TableCell className="text-right font-medium tabular-nums">{r.weeklyBuyers}</TableCell>
+                    <TableCell className="text-right tabular-nums text-muted-foreground">{r.monthlyBuyers}</TableCell>
+                  </TableRow>
+                )
+              })}
+              {showMineBelow && (
+                <TableRow className="bg-primary/5">
+                  <TableCell className="tabular-nums">{myRank + 1}</TableCell>
+                  <TableCell className="font-semibold">You</TableCell>
+                  <TableCell className="text-right font-medium tabular-nums">{board[myRank].weeklyBuyers}</TableCell>
+                  <TableCell className="text-right tabular-nums text-muted-foreground">{board[myRank].monthlyBuyers}</TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </div>
+        <p className="text-center text-xs text-muted-foreground">
+          Ranked by confirmed buyers this week. Top partners earn bonus rewards. Updated daily.
+        </p>
       </div>
 
       <div className="space-y-3">
