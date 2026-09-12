@@ -373,8 +373,19 @@ export async function POST(req: Request): Promise<NextResponse> {
       }
       if (action === 'paid') {
         await db.update(leads).set({ status: 'payment_received', ...firstResp }).where(eq(leads.id, lead.id))
+        // Tell the buyer in their ticket too, with the same 24h promise the card
+        // flow gives, so crypto/manual payments are not left silent.
+        await postToChannel(channelId, {
+          embeds: [
+            {
+              title: '✅ Payment received',
+              description: 'Thanks, your payment is confirmed! We will send your login details within 24 hours.',
+              color: 0x22c55e,
+            },
+          ],
+        })
         await postAdminNotify('💳 Payment received', [`Deal: DEAL-${lead.dealNumber}`, `Customer: ${lead.discordUsername}`], 0x22c55e)
-        return NextResponse.json({ type: 4, data: { content: 'Marked payment received.', flags: EPHEMERAL } })
+        return NextResponse.json({ type: 4, data: { content: 'Marked payment received. The buyer has been told login details come within 24 hours.', flags: EPHEMERAL } })
       }
       if (action === 'complete') {
         if (!lead.productId) {
