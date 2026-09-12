@@ -24,6 +24,32 @@ export const SERVICE_PCT = `${Math.round(SERVICE_SHARE * 100)}%`
 export const PROFIT_PCT = `${Math.round(PROFIT_SHARE * 100)}%`
 
 // ---------------------------------------------------------------------------
+// Site-wide discount
+// ---------------------------------------------------------------------------
+// Every buyer gets this much off the catalog price of any product. Lives here so
+// the amount is a one-line change. It applies wherever a buyer is shown or
+// charged a product price (ticket menu, Stripe Checkout, crypto message, Mark
+// Completed) and on the Products page. Set to 0 to switch the discount off.
+
+/** Flat discount taken off every product price, in cents. */
+export const DISCOUNT_CENTS = 1000 // $10
+
+/** The price a buyer actually pays after the site-wide discount (never below $0). */
+export function discountedPrice(priceCents: number): number {
+  return Math.max(0, priceCents - DISCOUNT_CENTS)
+}
+
+/**
+ * "$240.00 (was $250.00, $10.00 off)" — the discounted price with the original
+ * alongside it, or just the price when no discount applies.
+ */
+export function discountedPriceLabel(priceCents: number): string {
+  const after = discountedPrice(priceCents)
+  if (after === priceCents) return formatCents(priceCents)
+  return `${formatCents(after)} (was ${formatCents(priceCents)}, ${formatCents(priceCents - after)} off)`
+}
+
+// ---------------------------------------------------------------------------
 // Commission seam
 // ---------------------------------------------------------------------------
 // The commission AMOUNT lives behind this one function so the model is a

@@ -1,7 +1,7 @@
 import { eq } from 'drizzle-orm'
 import { db } from './db'
 import { orders, customers, leads, coaches, products } from './db/schema'
-import { computeOrderMoney, commissionForSale } from './money'
+import { computeOrderMoney, commissionForSale, discountedPrice } from './money'
 import { syncOrderCommission } from './commissions'
 import { recomputeCustomerRollups, recomputeCoachRollups } from './automations'
 
@@ -69,7 +69,10 @@ export async function syncStripeOrders(): Promise<{
   )
   const coachById = new Map(coachRows.map((c) => [c.id, c]))
 
-  const productForAmount = (amt: number) => productRows.find((p) => p.priceCents === amt)?.name ?? 'TikTok Shop Account'
+  // Buyers pay the discounted price, so match charges on that first, then the catalog price.
+  const productForAmount = (amt: number) =>
+    (productRows.find((p) => discountedPrice(p.priceCents) === amt) ?? productRows.find((p) => p.priceCents === amt))?.name ??
+    'TikTok Shop Account'
 
   let created = 0
   let updated = 0

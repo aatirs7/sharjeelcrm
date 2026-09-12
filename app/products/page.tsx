@@ -1,7 +1,7 @@
 import { desc } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { products } from '@/lib/db/schema'
-import { formatCents } from '@/lib/money'
+import { DISCOUNT_CENTS, discountedPrice, formatCents } from '@/lib/money'
 import { Button } from '@/components/ui/button'
 import {
   Table,
@@ -24,7 +24,7 @@ export default async function ProductsPage() {
       <PageHeader
         marker="products"
         title="Products"
-        meta={`${rows.length} products`}
+        meta={`${rows.length} products${DISCOUNT_CENTS > 0 ? ` · every buyer gets ${formatCents(DISCOUNT_CENTS)} off` : ''}`}
         action={<ProductDialog mode="create" trigger={<Button>Add product</Button>} />}
       />
 
@@ -35,6 +35,7 @@ export default async function ProductsPage() {
               <TableHead>Name</TableHead>
               <TableHead>Category</TableHead>
               <TableHead className="text-right">Price</TableHead>
+              {DISCOUNT_CENTS > 0 && <TableHead className="text-right">Buyer pays</TableHead>}
               <TableHead>Status</TableHead>
               <TableHead className="text-right">Manage</TableHead>
             </TableRow>
@@ -42,7 +43,7 @@ export default async function ProductsPage() {
           <TableBody>
             {rows.length === 0 && (
               <TableRow>
-                <TableCell colSpan={5} className="py-8 text-center text-muted-foreground">
+                <TableCell colSpan={DISCOUNT_CENTS > 0 ? 6 : 5} className="py-8 text-center text-muted-foreground">
                   No products yet. Add the catalog you sell.
                 </TableCell>
               </TableRow>
@@ -55,6 +56,11 @@ export default async function ProductsPage() {
                 </TableCell>
                 <TableCell className="text-sm text-muted-foreground">{p.category ?? '—'}</TableCell>
                 <TableCell className="text-right tabular-nums">{formatCents(p.priceCents)}</TableCell>
+                {DISCOUNT_CENTS > 0 && (
+                  <TableCell className="text-right tabular-nums text-emerald-600 dark:text-emerald-400">
+                    {formatCents(discountedPrice(p.priceCents))}
+                  </TableCell>
+                )}
                 <TableCell>
                   <span className={p.active ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground'}>
                     {p.active ? 'active' : 'inactive'}

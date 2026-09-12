@@ -62,6 +62,12 @@ netProfitCents      = profit - commission
   `PROFIT_SHARE` and the `*_PCT` label constants). Change them there and every label +
   computation updates. `splitRevenue()` applies the same split to an aggregate (Stripe gross).
 - Stored per-order in the `orders` table (incl. new `service_fee_cents`, migration `0004`).
+- **Site-wide discount (2026-09-12):** every buyer gets `DISCOUNT_CENTS` ($10) off any
+  product. `discountedPrice()` / `discountedPriceLabel()` in `lib/money.ts` are applied in
+  the Discord ticket flow (product menu, payment picker, Stripe Checkout amount, crypto
+  message, Mark Completed) and shown as a "Buyer pays" column on `/products`. Orders are
+  recorded at the discounted price the buyer actually paid. Set the constant to `0` to turn
+  the discount off.
 - **⚠️ Open business question (`TODO(sharjeel)` in the file):** commission is currently
   taken **out of the 35% profit**, off the **gross** price. Confirm with Sharjeel whether
   commission should instead come off gross *before* the split. Also confirm the default

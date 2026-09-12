@@ -8,7 +8,7 @@ import { createTicketChannel, postToChannel } from '@/lib/discord'
 import { ingestTicketLead } from '@/lib/leads-ingest'
 import { postAdminNotify } from '@/lib/discord-posts'
 import { createOrderForLead } from '@/lib/deal'
-import { formatCents } from '@/lib/money'
+import { discountedPrice, discountedPriceLabel, formatCents } from '@/lib/money'
 import { getSetting } from '@/lib/settings'
 import { createCheckoutSession, stripeStatus } from '@/lib/stripe'
 
@@ -72,7 +72,8 @@ async function postTicketControls(channelId: string): Promise<void> {
           custom_id: `product:${channelId}`,
           placeholder: 'Select a product',
           options: list.map((p) => ({
-            label: `${p.name} — ${formatCents(p.priceCents)}`.slice(0, 100),
+            // Buyers see what they actually pay (site-wide discount applied).
+            label: `${p.name} — ${formatCents(discountedPrice(p.priceCents))}`.slice(0, 100),
             value: p.id,
           })),
         },
@@ -109,7 +110,7 @@ async function postPaymentPicker(channelId: string, productName: string, priceCe
     embeds: [
       {
         title: '💳 How would you like to pay?',
-        description: `**${productName}** — ${formatCents(priceCents)}\n\nCard is instant via Stripe. Crypto is sent to one of our wallets and confirmed by staff.`,
+        description: `**${productName}** — ${discountedPriceLabel(priceCents)}\n\nCard is instant via Stripe. Crypto is sent to one of our wallets and confirmed by staff.`,
         color: 0x2f66e6,
       },
     ],
@@ -207,7 +208,7 @@ export async function POST(req: Request): Promise<NextResponse> {
       }
       return NextResponse.json({
         type: 4,
-        data: { content: product ? `Selected **${product.name}** (${formatCents(product.priceCents)}). Pick a payment method below.` : 'Not found.', flags: EPHEMERAL },
+        data: { content: product ? `Selected **${product.name}** (${discountedPriceLabel(product.priceCents)}). Pick a payment method below.` : 'Not found.', flags: EPHEMERAL },
       })
     }
 
@@ -235,18 +236,20 @@ export async function POST(req: Request): Promise<NextResponse> {
       const ticketUrl = lead.ticketLink ?? (guildId ? `https://discord.com/channels/${guildId}/${channelId}` : 'https://discord.com/channels/@me')
       const dealLine = `Deal: DEAL-${lead.dealNumber}`
       const customerLine = `Customer: ${lead.discordUsername}`
-      const productLine = `Product: ${product.name} (${formatCents(product.priceCents)})`
+      // What the buyer actually owes: catalog price minus the site-wide discount.
+      const amountCents = discountedPrice(product.priceCents)
+      const productLine = `Product: ${product.name} (${discountedPriceLabel(product.priceCents)})`
 
       if (method === 'card') {
         const stripe = stripeStatus()
         // Stripe needs at least $0.50; anything smaller falls back to a manual link.
-        if (stripe.canCharge && product.priceCents >= 50) {
+        if (stripe.canCharge && amountCents >= 50) {
           try {
             const session = await createCheckoutSession({
               leadId: lead.id,
               dealNumber: lead.dealNumber,
               productName: product.name,
-              amountCents: product.priceCents,
+              amountCents,
               returnUrl: ticketUrl,
               customerLabel: lead.discordUsername,
             })
@@ -258,7 +261,7 @@ export async function POST(req: Request): Promise<NextResponse> {
               embeds: [
                 {
                   title: '💳 Pay by card',
-                  description: `**${product.name}** — ${formatCents(product.priceCents)}\n\nClick the button to pay securely with Stripe. ${process.env.STRIPE_WEBHOOK_SECRET ? 'This ticket updates automatically once the payment goes through.' : 'Let us know here once you have paid.'}`,
+                  description: `**${product.name}** — ${discountedPriceLabel(product.priceCents)}\n\nClick the button to pay securely with Stripe. ${process.env.STRIPE_WEBHOOK_SECRET ? 'This ticket updates automatically once the payment goes through.' : 'Let us know here once you have paid.'}`,
                   color: 0x22c55e,
                 },
               ],
@@ -285,7 +288,7 @@ export async function POST(req: Request): Promise<NextResponse> {
           embeds: [
             {
               title: '💳 Card payment',
-              description: `**${product.name}** — ${formatCents(product.priceCents)}\n\nA team member will send your secure card payment link here shortly.`,
+              description: `**${product.name}** — ${discountedPriceLabel(product.priceCents)}\n\nA team member will send your secure card payment link here shortly.`,
               color: 0x3b82f6,
             },
           ],
@@ -321,8 +324,8 @@ export async function POST(req: Request): Promise<NextResponse> {
               {
                 title: '🪙 Pay with crypto',
                 description:
-                  `**${product.name}** — ${formatCents(product.priceCents)}\n\n` +
-                  `Send the equivalent of **${formatCents(product.priceCents)}** to one of these wallets:\n\n${list}\n\n` +
+                  `**${product.name}** — ${discountedPriceLabel(product.priceCents)}\n\n` +
+                  `Send the equivalent of **${formatCents(amountCents)}** to one of these wallets:\n\n${list}\n\n` +
                   'Double-check the network before sending. Then reply here with the transaction hash (or a screenshot) and a team member will confirm your payment.',
                 color: 0xf59e0b,
               },
@@ -335,7 +338,7 @@ export async function POST(req: Request): Promise<NextResponse> {
           embeds: [
             {
               title: '🪙 Pay with crypto',
-              description: `**${product.name}** — ${formatCents(product.priceCents)}\n\nPlease hold on — a team member will reply here with a wallet address shortly.`,
+              description: `**${product.name}** — ${discountedPriceLabel(product.priceCents)}\n\nPlease hold on — a team member will reply here with a wallet address shortly.`,
               color: 0xf59e0b,
             },
           ],
@@ -395,8 +398,10 @@ export async function POST(req: Request): Promise<NextResponse> {
         if (!product) {
           return NextResponse.json({ type: 4, data: { content: 'Selected product not found.', flags: EPHEMERAL } })
         }
-        await createOrderForLead(lead.id, { packageName: product.name, priceCents: product.priceCents, paymentMethod: lead.paymentMethod ?? null })
-        return NextResponse.json({ type: 4, data: { content: `Deal DEAL-${lead.dealNumber} completed — ${product.name} (${formatCents(product.priceCents)}).`, flags: EPHEMERAL } })
+        // The order is recorded at what the buyer actually paid (site-wide discount applied).
+        const paidCents = discountedPrice(product.priceCents)
+        await createOrderForLead(lead.id, { packageName: product.name, priceCents: paidCents, paymentMethod: lead.paymentMethod ?? null })
+        return NextResponse.json({ type: 4, data: { content: `Deal DEAL-${lead.dealNumber} completed — ${product.name} (${formatCents(paidCents)}).`, flags: EPHEMERAL } })
       }
       return NextResponse.json({ type: PONG })
     }
