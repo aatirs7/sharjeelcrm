@@ -183,6 +183,8 @@ export const coaches = pgTable('coaches', {
   coachCode: text('coach_code').unique(),
   // Promo / discount code buyers cite (e.g. "ISHHY100"). Unique so codes map 1:1.
   promoCode: text('promo_code').unique(),
+  // What a buyer saves when they use this coach's promo code, in cents ($10 by default).
+  discountCents: integer('discount_cents').notNull().default(1000),
   trackingLink: text('tracking_link'),
   discordInviteLink: text('discord_invite_link'),
   leadRole: text('lead_role'),
@@ -290,7 +292,9 @@ export const orders = pgTable('orders', {
   sourceCoachId: uuid('source_coach_id').references(() => coaches.id), // nullable
   promoCodeUsed: text('promo_code_used'), // snapshot of the code that earned credit
   package: text('package').notNull(),
+  // Final charged price (after any promo discount). Discount is the amount taken off.
   priceCents: integer('price_cents').notNull(),
+  discountCents: integer('discount_cents').notNull().default(0),
   supplierPayoutCents: integer('supplier_payout_cents').notNull(),
   serviceFeeCents: integer('service_fee_cents').notNull().default(0),
   profitCents: integer('profit_cents').notNull(),

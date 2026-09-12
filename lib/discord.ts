@@ -247,6 +247,26 @@ export async function firstBuyerMessage(channelId: string, buyerId: string): Pro
   }
 }
 
+/**
+ * Everything the buyer has typed in the ticket so far (oldest first, joined
+ * with newlines). Used to catch a promo code dropped after the ticket opened,
+ * e.g. as a reply to the "drop your promo code here" welcome message.
+ */
+export async function buyerMessagesText(channelId: string, buyerId: string): Promise<string | null> {
+  try {
+    const msgs = await dget<{ id: string; content: string; author: { id: string } }[]>(
+      `/channels/${channelId}/messages?limit=50`
+    )
+    const mine = msgs
+      .filter((m) => m.author?.id === buyerId && m.content?.trim())
+      .sort((a, b) => (BigInt(a.id) < BigInt(b.id) ? -1 : 1))
+      .map((m) => m.content.trim().slice(0, 500))
+    return mine.length ? mine.join('\n') : null
+  } catch {
+    return null
+  }
+}
+
 /** Classify a ticket from the buyer's first message: purchase | support | question. */
 export function classifyTicket(text: string | null): 'purchase' | 'support' | 'question' {
   if (!text) return 'question'

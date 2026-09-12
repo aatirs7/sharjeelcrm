@@ -17,6 +17,8 @@ export interface CoachInput {
   name: string
   coachCode?: string | null
   promoCode?: string | null
+  /** Dollars a buyer saves when they use this coach's promo code. */
+  discountDollars?: number | string | null
   discordUsername?: string | null
   commissionRatePercent?: number | string | null
   tier?: Tier | null
@@ -31,6 +33,13 @@ function percentToRate(percent: number | string | null | undefined): string | un
   const n = typeof percent === 'string' ? parseFloat(percent) : percent
   if (!Number.isFinite(n)) return undefined
   return (n / 100).toFixed(4)
+}
+
+function dollarsToCents(dollars: number | string | null | undefined): number | undefined {
+  if (dollars == null || dollars === '') return undefined
+  const n = typeof dollars === 'string' ? parseFloat(dollars) : dollars
+  if (!Number.isFinite(n)) return undefined
+  return Math.max(0, Math.round(n * 100))
 }
 
 function slugify(name: string): string {
@@ -52,6 +61,7 @@ export async function createCoach(input: CoachInput): Promise<string> {
       name: input.name.trim(),
       coachCode: input.coachCode?.trim() || slugify(input.name),
       promoCode: input.promoCode?.trim() || null,
+      discountCents: dollarsToCents(input.discountDollars) ?? 1000,
       discordUsername: input.discordUsername?.trim() || null,
       commissionRate: rate ?? '0.10',
       tier: input.tier ?? 'bronze',
@@ -73,6 +83,8 @@ export async function updateCoach(id: string, input: Partial<CoachInput>): Promi
   if (input.name !== undefined) patch.name = input.name.trim()
   if (input.coachCode !== undefined) patch.coachCode = input.coachCode?.trim() || null
   if (input.promoCode !== undefined) patch.promoCode = input.promoCode?.trim() || null
+  const discount = dollarsToCents(input.discountDollars)
+  if (discount !== undefined) patch.discountCents = discount
   if (input.discordUsername !== undefined) patch.discordUsername = input.discordUsername?.trim() || null
   if (input.tier !== undefined && input.tier) patch.tier = input.tier
   if (input.payoutMethod !== undefined) patch.payoutMethod = input.payoutMethod?.trim() || null

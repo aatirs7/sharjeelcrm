@@ -1,0 +1,2 @@
+ALTER TABLE "coaches" ADD COLUMN IF NOT EXISTS "discount_cents" integer DEFAULT 1000 NOT NULL;--> statement-breakpoint
+ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "discount_cents" integer DEFAULT 0 NOT NULL;

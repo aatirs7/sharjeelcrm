@@ -127,6 +127,13 @@
       "when": 1788992481965,
       "tag": "0017_solid_morlocks",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1789180800000,
+      "tag": "0018_promo_discounts",
+      "breakpoints": true
     }
   ]
 }

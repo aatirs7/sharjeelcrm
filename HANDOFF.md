@@ -94,8 +94,15 @@ netProfitCents      = profit - commission
   **Crypto** (`pay:card:<channel>` / `pay:crypto:<channel>` buttons in
   `app/api/discord/interactions/route.ts`). The choice is stored on the deal
   (`leads.payment_method`, migration `0016`) and flows through to the order.
+- **Promo discount:** each coach has a buyer discount (`coaches.discount_cents`, migration
+  `0018`, default $10, editable on the coach form). When the buyer picks a product or a
+  payment method, `resolveLeadPromo()` (`lib/promo.ts`) finds the code — from the lead's
+  attribution, or by re-reading the buyer's ticket messages, since buyers usually type the
+  code after the ticket (and its lead row) already exist — and takes the discount off the
+  price shown, the Stripe Checkout amount, the crypto amount and the order
+  (`orders.discount_cents`). A newly found code also attributes the deal to the coach.
 - **Card:** with a full `sk_` key, `createCheckoutSession()` (`lib/stripe.ts`) creates a hosted
-  Stripe Checkout link for the product price and the bot posts it in the ticket. The webhook
+  Stripe Checkout link for the (discounted) product price and the bot posts it in the ticket. The webhook
   `app/api/stripe/webhook/route.ts` (`checkout.session.completed`, signed with
   `STRIPE_WEBHOOK_SECRET`) then moves the deal to `payment_received`, stores the payment
   intent id, tells the buyer, and notifies staff. Without an `sk_` key (or on a Stripe

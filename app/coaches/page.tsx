@@ -75,7 +75,10 @@ export default async function CoachesPage() {
                 </TableCell>
                 <TableCell className="font-mono text-xs">
                   {c.promoCode ? (
-                    <span className="rounded bg-muted px-1.5 py-0.5">{c.promoCode}</span>
+                    <>
+                      <span className="rounded bg-muted px-1.5 py-0.5">{c.promoCode}</span>
+                      <div className="mt-1 font-sans text-muted-foreground">{formatCents(c.discountCents)} off for buyers</div>
+                    </>
                   ) : (
                     <span className="text-muted-foreground">—</span>
                   )}
@@ -98,6 +101,7 @@ export default async function CoachesPage() {
                         name: c.name,
                         coachCode: c.coachCode,
                         promoCode: c.promoCode,
+                        discountCents: c.discountCents,
                         discordUsername: c.discordUsername,
                         commissionRate: c.commissionRate,
                         tier: c.tier,

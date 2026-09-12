@@ -69,7 +69,11 @@ export async function syncStripeOrders(): Promise<{
   )
   const coachById = new Map(coachRows.map((c) => [c.id, c]))
 
-  const productForAmount = (amt: number) => productRows.find((p) => p.priceCents === amt)?.name ?? 'TikTok Shop Account'
+  // A charge equals a product's list price, or that price minus the coach's promo discount.
+  const productForAmount = (amt: number, discountCents: number) =>
+    productRows.find((p) => p.priceCents === amt)?.name ??
+    (discountCents > 0 ? productRows.find((p) => p.priceCents === amt + discountCents)?.name : undefined) ??
+    'TikTok Shop Account'
 
   let created = 0
   let updated = 0
@@ -113,6 +117,10 @@ export async function syncStripeOrders(): Promise<{
     const coach = coachId ? coachById.get(coachId) : null
 
     const priceCents = c.amount
+    const coachDiscount = coach?.discountCents ?? 0
+    // The promo discount was already taken off the charge; record it when the amount lines up.
+    const discountCents =
+      coachDiscount > 0 && productRows.some((p) => p.priceCents === priceCents + coachDiscount) ? coachDiscount : 0
     const commissionCents = commissionForSale(priceCents, coach ?? null)
     const money = computeOrderMoney({ priceCents, commissionCents })
 
@@ -123,8 +131,9 @@ export async function syncStripeOrders(): Promise<{
         customerId: customer.id,
         sourceCoachId: coachId,
         promoCodeUsed: coach?.promoCode ?? null,
-        package: productForAmount(priceCents),
+        package: productForAmount(priceCents, coachDiscount),
         priceCents,
+        discountCents,
         supplierPayoutCents: money.supplierPayoutCents,
         serviceFeeCents: money.serviceFeeCents,
         profitCents: money.profitCents,

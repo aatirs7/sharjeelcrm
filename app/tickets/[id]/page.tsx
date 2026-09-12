@@ -104,6 +104,11 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
                         {lead.promoCodeUsed}
                       </span>
                     ) : null}
+                    {lead.promoCodeUsed && lead.sourceCoach.discountCents > 0 ? (
+                      <span className="ml-1 text-xs text-muted-foreground">
+                        · {formatCents(lead.sourceCoach.discountCents)} off
+                      </span>
+                    ) : null}
                   </span>
                 ) : (
                   <span className="text-muted-foreground">unattributed</span>

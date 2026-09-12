@@ -37,6 +37,7 @@ export function CoachFormDialog({
     name: string
     coachCode: string | null
     promoCode: string | null
+    discountCents: number
     discordUsername: string | null
     commissionRate: string
     tier: string
@@ -51,6 +52,7 @@ export function CoachFormDialog({
   const [pending, startTransition] = useTransition()
   const [name, setName] = useState(coach?.name ?? '')
   const [promo, setPromo] = useState(coach?.promoCode ?? '')
+  const [discount, setDiscount] = useState(coach ? (coach.discountCents / 100).toString() : '10')
   const [handle, setHandle] = useState(coach?.coachCode ?? '')
   const [discord, setDiscord] = useState(coach?.discordUsername ?? '')
   const [percent, setPercent] = useState(coach ? (Number(coach.commissionRate) * 100).toString() : '10')
@@ -67,6 +69,7 @@ export function CoachFormDialog({
           name,
           coachCode: handle || null,
           promoCode: promo || null,
+          discountDollars: discount === '' ? null : discount,
           discordUsername: discord || null,
           commissionRatePercent: percent || null,
           tier: tier as (typeof TIERS)[number],
@@ -106,6 +109,11 @@ export function CoachFormDialog({
               <Label htmlFor="co-handle">Handle</Label>
               <Input id="co-handle" value={handle} onChange={(e) => setHandle(e.target.value)} placeholder="ishhy-printss" />
             </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="co-discount">Buyer discount $</Label>
+            <Input id="co-discount" type="number" min="0" step="1" value={discount} onChange={(e) => setDiscount(e.target.value)} placeholder="10" />
+            <p className="text-xs text-muted-foreground">Taken off the price when a buyer uses this promo code.</p>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">

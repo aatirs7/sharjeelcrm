@@ -102,7 +102,10 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
               <CardTitle className="text-base">Financials</CardTitle>
             </CardHeader>
             <CardContent>
-              <Row label="Price" value={formatCents(order.priceCents)} />
+              {order.discountCents > 0 && (
+                <Row label={`Promo discount${order.promoCodeUsed ? ` (${order.promoCodeUsed})` : ''}`} value={`−${formatCents(order.discountCents)}`} />
+              )}
+              <Row label={order.discountCents > 0 ? 'Price paid' : 'Price'} value={formatCents(order.priceCents)} />
               <Row label={`Supplier payout (${SUPPLIER_PCT})`} value={formatCents(order.supplierPayoutCents)} />
               <Row label={`Service (${SERVICE_PCT})`} value={formatCents(order.serviceFeeCents ?? 0)} />
               <Row label={`Profit (${PROFIT_PCT})`} value={formatCents(order.profitCents)} />

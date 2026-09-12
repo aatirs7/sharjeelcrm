@@ -12,7 +12,10 @@ type PaymentMethodValue = (typeof paymentMethodEnum.enumValues)[number]
 
 export interface CreateOrderInput {
   packageName: string
+  /** Final price the buyer pays (already net of any promo discount). */
   priceCents: number
+  /** Amount a promo code took off the list price, for the record. */
+  discountCents?: number | null
   paymentMethod?: PaymentMethodValue | null
   coachId?: string | null
 }
@@ -65,6 +68,7 @@ export async function createOrderForLead(leadId: string, input: CreateOrderInput
   }
 
   const priceCents = input.priceCents
+  const discountCents = Math.max(0, input.discountCents ?? 0)
   const commissionCents = commissionForSale(priceCents, coach ?? null)
   const money = computeOrderMoney({ priceCents, commissionCents })
 
@@ -77,6 +81,7 @@ export async function createOrderForLead(leadId: string, input: CreateOrderInput
       promoCodeUsed: coach?.promoCode ?? lead.promoCodeUsed ?? null,
       package: input.packageName.trim(),
       priceCents,
+      discountCents,
       supplierPayoutCents: money.supplierPayoutCents,
       serviceFeeCents: money.serviceFeeCents,
       profitCents: money.profitCents,
@@ -102,7 +107,7 @@ export async function createOrderForLead(leadId: string, input: CreateOrderInput
     entity: 'deal',
     entityRef: `DEAL-${lead.dealNumber}`,
     summary: `Deal completed: ${input.packageName.trim()} for ${formatCents(priceCents)}${coach ? ` (coach ${coach.name})` : ''}`,
-    meta: { orderId: order.id, priceCents, coachId },
+    meta: { orderId: order.id, priceCents, discountCents, coachId },
   })
   await postAdminNotify(
     '💰 New sale',
@@ -110,7 +115,7 @@ export async function createOrderForLead(leadId: string, input: CreateOrderInput
       `Deal: DEAL-${lead.dealNumber}`,
       `Customer: ${lead.discordUsername}`,
       `Product: ${input.packageName.trim()}`,
-      `Amount: ${formatCents(priceCents)}`,
+      `Amount: ${formatCents(priceCents)}${discountCents > 0 ? ` (promo discount ${formatCents(discountCents)} off)` : ''}`,
       coach ? `Referrer: ${coach.name} (${formatCents(commissionCents)} commission)` : 'Referrer: none',
     ],
     0x22c55e

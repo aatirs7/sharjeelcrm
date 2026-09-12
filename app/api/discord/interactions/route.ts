@@ -11,6 +11,7 @@ import { createOrderForLead } from '@/lib/deal'
 import { formatCents } from '@/lib/money'
 import { getSetting } from '@/lib/settings'
 import { createCheckoutSession, stripeStatus } from '@/lib/stripe'
+import { applyDiscount, priceLine, resolveLeadPromo } from '@/lib/promo'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -104,12 +105,12 @@ async function postTicketControls(channelId: string): Promise<void> {
  * Stripe Checkout link; crypto posts the saved wallets (or asks them to wait
  * for the owner when none are saved).
  */
-async function postPaymentPicker(channelId: string, productName: string, priceCents: number): Promise<void> {
+async function postPaymentPicker(channelId: string, productName: string, price: string): Promise<void> {
   await postToChannel(channelId, {
     embeds: [
       {
         title: '💳 How would you like to pay?',
-        description: `**${productName}** — ${formatCents(priceCents)}\n\nCard is instant via Stripe. Crypto is sent to one of our wallets and confirmed by staff.`,
+        description: `**${productName}** — ${price}\n\nCard is instant via Stripe. Crypto is sent to one of our wallets and confirmed by staff.`,
         color: 0x2f66e6,
       },
     ],
@@ -165,7 +166,7 @@ export async function POST(req: Request): Promise<NextResponse> {
       }
       const link = `https://discord.com/channels/${guildId}/${channelId}`
       await postToChannel(channelId, {
-        content: `<@${user.id}> ${cfg.welcome}\n\nIf you have a **referral or promo code**, drop it here and a team member will be with you shortly.`,
+        content: `<@${user.id}> ${cfg.welcome}\n\nIf you have a **referral or promo code**, drop it here to get your discount — a team member will be with you shortly.`,
       })
       await ingestTicketLead({
         discordUsername: user.username ?? 'buyer',
@@ -203,12 +204,16 @@ export async function POST(req: Request): Promise<NextResponse> {
         }
         if (lead && (lead.status === 'new_lead' || lead.status === 'contacted')) patch.status = 'product_selected'
         await db.update(leads).set(patch).where(eq(leads.discordChannelId, channelId))
-        await postPaymentPicker(channelId, product.name, product.priceCents)
+        // Promo code (typed in the ticket or caught at ingest) takes money off the price.
+        const promo = lead ? await resolveLeadPromo(lead) : { coach: null, code: null, discountCents: 0 }
+        const price = priceLine(product.priceCents, promo)
+        await postPaymentPicker(channelId, product.name, price)
+        return NextResponse.json({
+          type: 4,
+          data: { content: `Selected **${product.name}** (${price}). Pick a payment method below.`, flags: EPHEMERAL },
+        })
       }
-      return NextResponse.json({
-        type: 4,
-        data: { content: product ? `Selected **${product.name}** (${formatCents(product.priceCents)}). Pick a payment method below.` : 'Not found.', flags: EPHEMERAL },
-      })
+      return NextResponse.json({ type: 4, data: { content: 'Not found.', flags: EPHEMERAL } })
     }
 
     // Buyer picks how to pay: card (Stripe Checkout) or crypto (wallet transfer).
@@ -233,20 +238,24 @@ export async function POST(req: Request): Promise<NextResponse> {
       }
       const guildId = interaction.guild_id
       const ticketUrl = lead.ticketLink ?? (guildId ? `https://discord.com/channels/${guildId}/${channelId}` : 'https://discord.com/channels/@me')
+      // Promo discount comes off the list price everywhere below (Stripe amount, wallet amount, messages).
+      const promo = await resolveLeadPromo(lead)
+      const amountCents = applyDiscount(product.priceCents, promo.discountCents)
+      const price = priceLine(product.priceCents, promo)
       const dealLine = `Deal: DEAL-${lead.dealNumber}`
       const customerLine = `Customer: ${lead.discordUsername}`
-      const productLine = `Product: ${product.name} (${formatCents(product.priceCents)})`
+      const productLine = `Product: ${product.name} (${formatCents(amountCents)}${promo.code ? `, promo ${promo.code} −${formatCents(product.priceCents - amountCents)}` : ''})`
 
       if (method === 'card') {
         const stripe = stripeStatus()
         // Stripe needs at least $0.50; anything smaller falls back to a manual link.
-        if (stripe.canCharge && product.priceCents >= 50) {
+        if (stripe.canCharge && amountCents >= 50) {
           try {
             const session = await createCheckoutSession({
               leadId: lead.id,
               dealNumber: lead.dealNumber,
               productName: product.name,
-              amountCents: product.priceCents,
+              amountCents,
               returnUrl: ticketUrl,
               customerLabel: lead.discordUsername,
             })
@@ -258,7 +267,7 @@ export async function POST(req: Request): Promise<NextResponse> {
               embeds: [
                 {
                   title: '💳 Pay by card',
-                  description: `**${product.name}** — ${formatCents(product.priceCents)}\n\nClick the button to pay securely with Stripe. ${process.env.STRIPE_WEBHOOK_SECRET ? 'This ticket updates automatically once the payment goes through.' : 'Let us know here once you have paid.'}`,
+                  description: `**${product.name}** — ${price}\n\nClick the button to pay securely with Stripe. ${process.env.STRIPE_WEBHOOK_SECRET ? 'This ticket updates automatically once the payment goes through.' : 'Let us know here once you have paid.'}`,
                   color: 0x22c55e,
                 },
               ],
@@ -285,7 +294,7 @@ export async function POST(req: Request): Promise<NextResponse> {
           embeds: [
             {
               title: '💳 Card payment',
-              description: `**${product.name}** — ${formatCents(product.priceCents)}\n\nA team member will send your secure card payment link here shortly.`,
+              description: `**${product.name}** — ${price}\n\nA team member will send your secure card payment link here shortly.`,
               color: 0x3b82f6,
             },
           ],
@@ -321,8 +330,8 @@ export async function POST(req: Request): Promise<NextResponse> {
               {
                 title: '🪙 Pay with crypto',
                 description:
-                  `**${product.name}** — ${formatCents(product.priceCents)}\n\n` +
-                  `Send the equivalent of **${formatCents(product.priceCents)}** to one of these wallets:\n\n${list}\n\n` +
+                  `**${product.name}** — ${price}\n\n` +
+                  `Send the equivalent of **${formatCents(amountCents)}** to one of these wallets:\n\n${list}\n\n` +
                   'Double-check the network before sending. Then reply here with the transaction hash (or a screenshot) and a team member will confirm your payment.',
                 color: 0xf59e0b,
               },
@@ -335,7 +344,7 @@ export async function POST(req: Request): Promise<NextResponse> {
           embeds: [
             {
               title: '🪙 Pay with crypto',
-              description: `**${product.name}** — ${formatCents(product.priceCents)}\n\nPlease hold on — a team member will reply here with a wallet address shortly.`,
+              description: `**${product.name}** — ${price}\n\nPlease hold on — a team member will reply here with a wallet address shortly.`,
               color: 0xf59e0b,
             },
           ],
@@ -384,8 +393,15 @@ export async function POST(req: Request): Promise<NextResponse> {
         if (!product) {
           return NextResponse.json({ type: 4, data: { content: 'Selected product not found.', flags: EPHEMERAL } })
         }
-        await createOrderForLead(lead.id, { packageName: product.name, priceCents: product.priceCents, paymentMethod: lead.paymentMethod ?? null })
-        return NextResponse.json({ type: 4, data: { content: `Deal DEAL-${lead.dealNumber} completed — ${product.name} (${formatCents(product.priceCents)}).`, flags: EPHEMERAL } })
+        const promo = await resolveLeadPromo(lead)
+        const amountCents = applyDiscount(product.priceCents, promo.discountCents)
+        await createOrderForLead(lead.id, {
+          packageName: product.name,
+          priceCents: amountCents,
+          discountCents: product.priceCents - amountCents,
+          paymentMethod: lead.paymentMethod ?? null,
+        })
+        return NextResponse.json({ type: 4, data: { content: `Deal DEAL-${lead.dealNumber} completed — ${product.name} (${priceLine(product.priceCents, promo)}).`, flags: EPHEMERAL } })
       }
       return NextResponse.json({ type: PONG })
     }
