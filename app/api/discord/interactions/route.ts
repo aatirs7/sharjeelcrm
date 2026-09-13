@@ -64,12 +64,12 @@ const PROMO_DISCOUNT_CENTS = 1000
 
 /** The price a buyer actually pays: base minus the promo discount when the lead
  *  is attributed to a real promo code (promoCodeUsed is only set on a match). */
-function effectivePrice(baseCents: number, lead: { promoCodeUsed?: string | null } | null): number {
+function effectivePrice(baseCents: number, lead: { promoCodeUsed?: string | null } | null | undefined): number {
   return lead?.promoCodeUsed ? Math.max(baseCents - PROMO_DISCOUNT_CENTS, 0) : baseCents
 }
 
 /** "$589.00 (promo SAVE10, $10.00 off)" style price line, or just the price. */
-function priceLine(baseCents: number, lead: { promoCodeUsed?: string | null } | null): string {
+function priceLine(baseCents: number, lead: { promoCodeUsed?: string | null } | null | undefined): string {
   const price = effectivePrice(baseCents, lead)
   if (price === baseCents) return formatCents(price)
   return `~~${formatCents(baseCents)}~~ ${formatCents(price)} (promo ${lead!.promoCodeUsed}, ${formatCents(baseCents - price)} off)`
