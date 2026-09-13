@@ -59,6 +59,22 @@ const PANEL = {
   other: { label: 'question', welcome: 'thanks for reaching out!', ticketType: 'question' as const, route: 'SHOP' },
 }
 
+/** Flat discount a buyer gets when they came in on a valid coach promo code. */
+const PROMO_DISCOUNT_CENTS = 1000
+
+/** The price a buyer actually pays: base minus the promo discount when the lead
+ *  is attributed to a real promo code (promoCodeUsed is only set on a match). */
+function effectivePrice(baseCents: number, lead: { promoCodeUsed?: string | null } | null | undefined): number {
+  return lead?.promoCodeUsed ? Math.max(baseCents - PROMO_DISCOUNT_CENTS, 0) : baseCents
+}
+
+/** "$589.00 (promo SAVE10, $10.00 off)" style price line, or just the price. */
+function priceLine(baseCents: number, lead: { promoCodeUsed?: string | null } | null | undefined): string {
+  const price = effectivePrice(baseCents, lead)
+  if (price === baseCents) return formatCents(price)
+  return `~~${formatCents(baseCents)}~~ ${formatCents(price)} (promo ${lead!.promoCodeUsed}, ${formatCents(baseCents - price)} off)`
+}
+
 /** Post the ticket controls: a product picker (buyer) + staff action buttons. */
 async function postTicketControls(channelId: string): Promise<void> {
   const list = await db.select().from(products).where(eq(products.active, true)).limit(25)
@@ -104,12 +120,12 @@ async function postTicketControls(channelId: string): Promise<void> {
  * Stripe Checkout link; crypto posts the saved wallets (or asks them to wait
  * for the owner when none are saved).
  */
-async function postPaymentPicker(channelId: string, productName: string, priceCents: number): Promise<void> {
+async function postPaymentPicker(channelId: string, productName: string, priceText: string): Promise<void> {
   await postToChannel(channelId, {
     embeds: [
       {
         title: '💳 How would you like to pay?',
-        description: `**${productName}** — ${formatCents(priceCents)}\n\nCard is instant via Stripe. Crypto is sent to one of our wallets and confirmed by staff.`,
+        description: `**${productName}** — ${priceText}\n\nCard is instant via Stripe. Crypto is sent to one of our wallets and confirmed by staff.`,
         color: 0x2f66e6,
       },
     ],
@@ -167,6 +183,21 @@ export async function POST(req: Request): Promise<NextResponse> {
       await postToChannel(channelId, {
         content: `<@${user.id}> ${cfg.welcome}\n\nIf you have a **referral or promo code**, drop it here and a team member will be with you shortly.`,
       })
+      // Anti-impersonation notice on every ticket, so a buyer is warned before a
+      // scammer copying our name can DM them (spec: server safety).
+      await postToChannel(channelId, {
+        embeds: [
+          {
+            title: '🛡️ Stay safe from scammers',
+            description:
+              'Please read before you pay:\n\n' +
+              '- We will never DM you first. Every deal happens here inside your ticket, never in DMs.\n' +
+              '- Only staff with the official role are real. Anyone copying our name in DMs is a scammer, block and report them.\n' +
+              '- Payment and delivery only happen in this ticket. If someone asks you to pay anywhere else, it is a scam.',
+            color: 0xf59e0b,
+          },
+        ],
+      })
       await ingestTicketLead({
         discordUsername: user.username ?? 'buyer',
         discordUserId: user.id,
@@ -203,11 +234,12 @@ export async function POST(req: Request): Promise<NextResponse> {
         }
         if (lead && (lead.status === 'new_lead' || lead.status === 'contacted')) patch.status = 'product_selected'
         await db.update(leads).set(patch).where(eq(leads.discordChannelId, channelId))
-        await postPaymentPicker(channelId, product.name, product.priceCents)
+        await postPaymentPicker(channelId, product.name, priceLine(product.priceCents, lead))
       }
+      const selLead = product ? await db.query.leads.findFirst({ where: eq(leads.discordChannelId, channelId) }) : null
       return NextResponse.json({
         type: 4,
-        data: { content: product ? `Selected **${product.name}** (${formatCents(product.priceCents)}). Pick a payment method below.` : 'Not found.', flags: EPHEMERAL },
+        data: { content: product ? `Selected **${product.name}** (${formatCents(effectivePrice(product.priceCents, selLead))}). Pick a payment method below.` : 'Not found.', flags: EPHEMERAL },
       })
     }
 
@@ -233,20 +265,22 @@ export async function POST(req: Request): Promise<NextResponse> {
       }
       const guildId = interaction.guild_id
       const ticketUrl = lead.ticketLink ?? (guildId ? `https://discord.com/channels/${guildId}/${channelId}` : 'https://discord.com/channels/@me')
+      const price = effectivePrice(product.priceCents, lead)
+      const priceText = priceLine(product.priceCents, lead)
       const dealLine = `Deal: DEAL-${lead.dealNumber}`
       const customerLine = `Customer: ${lead.discordUsername}`
-      const productLine = `Product: ${product.name} (${formatCents(product.priceCents)})`
+      const productLine = `Product: ${product.name} (${formatCents(price)}${price !== product.priceCents ? `, promo ${lead.promoCodeUsed}` : ''})`
 
       if (method === 'card') {
         const stripe = stripeStatus()
         // Stripe needs at least $0.50; anything smaller falls back to a manual link.
-        if (stripe.canCharge && product.priceCents >= 50) {
+        if (stripe.canCharge && price >= 50) {
           try {
             const session = await createCheckoutSession({
               leadId: lead.id,
               dealNumber: lead.dealNumber,
               productName: product.name,
-              amountCents: product.priceCents,
+              amountCents: price,
               returnUrl: ticketUrl,
               customerLabel: lead.discordUsername,
             })
@@ -258,7 +292,7 @@ export async function POST(req: Request): Promise<NextResponse> {
               embeds: [
                 {
                   title: '💳 Pay by card',
-                  description: `**${product.name}** — ${formatCents(product.priceCents)}\n\nClick the button to pay securely with Stripe. ${process.env.STRIPE_WEBHOOK_SECRET ? 'This ticket updates automatically once the payment goes through.' : 'Let us know here once you have paid.'}`,
+                  description: `**${product.name}** — ${priceText}\n\nClick the button to pay securely with Stripe. ${process.env.STRIPE_WEBHOOK_SECRET ? 'This ticket updates automatically once the payment goes through.' : 'Let us know here once you have paid.'}`,
                   color: 0x22c55e,
                 },
               ],
@@ -285,7 +319,7 @@ export async function POST(req: Request): Promise<NextResponse> {
           embeds: [
             {
               title: '💳 Card payment',
-              description: `**${product.name}** — ${formatCents(product.priceCents)}\n\nA team member will send your secure card payment link here shortly.`,
+              description: `**${product.name}** — ${priceText}\n\nA team member will send your secure card payment link here shortly.`,
               color: 0x3b82f6,
             },
           ],
@@ -321,8 +355,8 @@ export async function POST(req: Request): Promise<NextResponse> {
               {
                 title: '🪙 Pay with crypto',
                 description:
-                  `**${product.name}** — ${formatCents(product.priceCents)}\n\n` +
-                  `Send the equivalent of **${formatCents(product.priceCents)}** to one of these wallets:\n\n${list}\n\n` +
+                  `**${product.name}** — ${priceText}\n\n` +
+                  `Send the equivalent of **${formatCents(price)}** to one of these wallets:\n\n${list}\n\n` +
                   'Double-check the network before sending. Then reply here with the transaction hash (or a screenshot) and a team member will confirm your payment.',
                 color: 0xf59e0b,
               },
@@ -335,7 +369,7 @@ export async function POST(req: Request): Promise<NextResponse> {
           embeds: [
             {
               title: '🪙 Pay with crypto',
-              description: `**${product.name}** — ${formatCents(product.priceCents)}\n\nPlease hold on — a team member will reply here with a wallet address shortly.`,
+              description: `**${product.name}** — ${priceText}\n\nPlease hold on, a team member will reply here with a wallet address shortly.`,
               color: 0xf59e0b,
             },
           ],
@@ -395,8 +429,9 @@ export async function POST(req: Request): Promise<NextResponse> {
         if (!product) {
           return NextResponse.json({ type: 4, data: { content: 'Selected product not found.', flags: EPHEMERAL } })
         }
-        await createOrderForLead(lead.id, { packageName: product.name, priceCents: product.priceCents, paymentMethod: lead.paymentMethod ?? null })
-        return NextResponse.json({ type: 4, data: { content: `Deal DEAL-${lead.dealNumber} completed — ${product.name} (${formatCents(product.priceCents)}).`, flags: EPHEMERAL } })
+        const paidCents = effectivePrice(product.priceCents, lead)
+        await createOrderForLead(lead.id, { packageName: product.name, priceCents: paidCents, paymentMethod: lead.paymentMethod ?? null })
+        return NextResponse.json({ type: 4, data: { content: `Deal DEAL-${lead.dealNumber} completed — ${product.name} (${formatCents(paidCents)}).`, flags: EPHEMERAL } })
       }
       return NextResponse.json({ type: PONG })
     }
