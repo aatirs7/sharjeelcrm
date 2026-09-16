@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { Lock, Menu, X, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { PushToggle } from "@/components/push-toggle";
 import { signOut } from "@/lib/actions/auth";
 
 import { can, type Capability, type Role } from "@/lib/permissions";
@@ -115,6 +116,7 @@ export function AppNav({ role = "owner", allowed }: { role?: Role; allowed?: Cap
               <Sparkles className="size-4" />
             </button>
           )}
+          {(role === "admin" || role === "owner") && <PushToggle />}
           <ThemeToggle />
           <form action={signOut}>
             <button
