@@ -94,6 +94,10 @@ netProfitCents      = profit - commission
   **Crypto** (`pay:card:<channel>` / `pay:crypto:<channel>` buttons in
   `app/api/discord/interactions/route.ts`). The choice is stored on the deal
   (`leads.payment_method`, migration `0016`) and flows through to the order.
+- **Ticket channels are numbered**, `ticket-<dealNumber>` (e.g. `ticket-10042`), not named
+  after the buyer. The bot reserves the number from `deal_number_seq` via `nextDealNumber()`
+  (`lib/leads-ingest.ts`) before creating the channel, then inserts the lead under that same
+  number, so the Discord channel and the CRM `DEAL-####` always match.
 - **Card:** with a full `sk_` key, `createCheckoutSession()` (`lib/stripe.ts`) creates a hosted
   Stripe Checkout link for the product price and the bot posts it in the ticket. The webhook
   `app/api/stripe/webhook/route.ts` (`checkout.session.completed`, signed with
