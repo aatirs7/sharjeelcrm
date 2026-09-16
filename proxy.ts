@@ -19,8 +19,11 @@ export async function proxy(request: NextRequest) {
   if (
     pathname === '/login' ||
     pathname === '/coach/join' ||
+    pathname === '/sw.js' ||
+    pathname === '/manifest.webmanifest' ||
     pathname.startsWith('/api/') ||
-    pathname.startsWith('/ref/')
+    pathname.startsWith('/ref/') ||
+    /\.(png|ico|svg|jpg|jpeg|webmanifest|txt|xml)$/.test(pathname)
   ) {
     return NextResponse.next()
   }
