@@ -1,4 +1,4 @@
-import { and, eq, isNotNull } from 'drizzle-orm'
+import { and, eq, isNotNull, sql } from 'drizzle-orm'
 import { db } from './db'
 import { leads, coaches, leadSource } from './db/schema'
 
@@ -13,6 +13,21 @@ export interface TicketLeadInput {
   ticketType?: 'purchase' | 'support' | 'question' | 'other' | null
   routeCategory?: string | null
   email?: string | null
+  // A deal number reserved up front with `nextDealNumber()` so the Discord
+  // channel can be named after it before the lead row exists. Only used on insert.
+  dealNumber?: number | null
+}
+
+/**
+ * Reserve the next DEAL-#### number from the shared Postgres sequence without
+ * inserting a row. Lets the bot name the ticket channel `ticket-<number>` and
+ * then save the lead under that same number, so Discord and the CRM match.
+ */
+export async function nextDealNumber(): Promise<number> {
+  const res = await db.execute<{ n: string | number }>(sql`select nextval('deal_number_seq') as n`)
+  const n = Number(res.rows[0]?.n)
+  if (!Number.isFinite(n)) throw new Error('could not reserve a deal number')
+  return n
 }
 
 /** The coach id resolved for a lead, so callers can provision Discord roles. */
@@ -97,6 +112,9 @@ export async function ingestTicketLead(input: TicketLeadInput): Promise<IngestRe
     }
   }
 
-  const [lead] = await db.insert(leads).values(values).returning({ id: leads.id })
+  const [lead] = await db
+    .insert(leads)
+    .values(input.dealNumber ? { ...values, dealNumber: input.dealNumber } : values)
+    .returning({ id: leads.id })
   return { leadId: lead.id, created: true, sourceCoachId: values.sourceCoachId }
 }

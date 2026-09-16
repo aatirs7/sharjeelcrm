@@ -5,7 +5,7 @@ import { and, eq } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { leads, products, reps } from '@/lib/db/schema'
 import { createTicketChannel, postToChannel } from '@/lib/discord'
-import { ingestTicketLead } from '@/lib/leads-ingest'
+import { ingestTicketLead, nextDealNumber } from '@/lib/leads-ingest'
 import { postAdminNotify } from '@/lib/discord-posts'
 import { createOrderForLead } from '@/lib/deal'
 import { formatCents } from '@/lib/money'
@@ -174,8 +174,16 @@ export async function POST(req: Request): Promise<NextResponse> {
       if (!guildId || !user?.id) {
         return NextResponse.json({ type: 4, data: { content: 'Could not open a ticket.', flags: EPHEMERAL } })
       }
-      const safe = String(user.username || 'buyer').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 20)
-      const channelId = await createTicketChannel(guildId, user.id, `ticket-${safe}`)
+      // Channels are numbered (ticket-10042), not named after the buyer, so the
+      // owner can track them at a glance. The number is the CRM deal number, so
+      // the Discord channel and the DEAL-#### row always match.
+      let dealNumber: number
+      try {
+        dealNumber = await nextDealNumber()
+      } catch {
+        return NextResponse.json({ type: 4, data: { content: 'Could not create your ticket, please ping staff.', flags: EPHEMERAL } })
+      }
+      const channelId = await createTicketChannel(guildId, user.id, `ticket-${dealNumber}`)
       if (!channelId) {
         return NextResponse.json({ type: 4, data: { content: 'Could not create your ticket, please ping staff.', flags: EPHEMERAL } })
       }
@@ -206,10 +214,11 @@ export async function POST(req: Request): Promise<NextResponse> {
         source: 'discord',
         ticketType: cfg.ticketType,
         routeCategory: cfg.route,
+        dealNumber,
       })
       await postAdminNotify(
         '🎫 New ticket',
-        [`Type: ${cfg.label}`, `Customer: ${user.username ?? user.id}`, `Channel: <#${channelId}>`],
+        [`Deal: DEAL-${dealNumber}`, `Type: ${cfg.label}`, `Customer: ${user.username ?? user.id}`, `Channel: <#${channelId}>`],
         0x3b82f6
       )
       await postTicketControls(channelId)
