@@ -4,6 +4,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { ThemeProvider } from "@/components/theme-provider";
 import { AppNav } from "@/components/app-nav";
 import { WhatsNew } from "@/components/whats-new";
+import { PwaRegistrar } from "@/components/pwa-registrar";
 import { getSession } from "@/lib/auth";
 import { getRoleOverrides } from "@/lib/settings";
 import { effectiveCaps } from "@/lib/permissions";
@@ -29,6 +30,9 @@ const code = JetBrains_Mono({
 export const metadata: Metadata = {
   title: "The Desk — TikTok Shop CRM",
   description: "Internal CRM for TikTok Shop account sales.",
+  manifest: "/manifest.webmanifest",
+  appleWebApp: { capable: true, title: "The Desk", statusBarStyle: "black-translucent" },
+  icons: { apple: "/icon-192.png" },
 };
 
 export default async function RootLayout({
@@ -55,6 +59,7 @@ export default async function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
+          <PwaRegistrar />
           <AppNav role={role} allowed={allowed} />
           <WhatsNew role={role} />
           <main className="flex-1 w-full max-w-[76rem] mx-auto px-5 py-8 md:py-10 space-y-8">

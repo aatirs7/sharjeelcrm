@@ -466,6 +466,22 @@ export const settings = pgTable('settings', {
 })
 
 // ---------------------------------------------------------------------------
+// push_subscriptions — Web Push endpoints for the installed admin PWA, so the
+// owner's phone is pushed on new tickets, payments, and other admin alerts.
+// One row per device, keyed by its unique push endpoint.
+// ---------------------------------------------------------------------------
+
+export const pushSubscriptions = pgTable('push_subscriptions', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  endpoint: text('endpoint').notNull().unique(),
+  p256dh: text('p256dh').notNull(),
+  auth: text('auth').notNull(),
+  createdAt: createdAt(),
+})
+
+export type PushSubscriptionRow = typeof pushSubscriptions.$inferSelect
+
+// ---------------------------------------------------------------------------
 // leaderboard_months — archived monthly standings + rewards (spec §17).
 // ---------------------------------------------------------------------------
 

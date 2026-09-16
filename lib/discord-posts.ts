@@ -4,6 +4,7 @@ import { leads, orders, commissions } from './db/schema'
 import { postToChannel } from './discord'
 import { getLeaderboard } from './queries/leaderboard'
 import { formatCents } from './money'
+import { sendPush } from './push'
 
 // Coach-facing channel for leaderboard + payout proofs (#＄・affiliates-program).
 function affiliateChannel(): string | null {
@@ -81,9 +82,12 @@ export async function postAdminNotify(
   lines: string[],
   color = 0x3b82f6
 ): Promise<boolean> {
-  return postToChannel(adminChannel(), {
+  const ok = await postToChannel(adminChannel(), {
     embeds: [{ title, description: lines.filter(Boolean).join('\n'), color }],
   })
+  // Also buzz the owner's installed CRM app (no-op until push is set up).
+  await sendPush({ title, body: lines.filter(Boolean).join(' · ').slice(0, 180) })
+  return ok
 }
 
 /** Announce a paid payout in the affiliates channel. */
