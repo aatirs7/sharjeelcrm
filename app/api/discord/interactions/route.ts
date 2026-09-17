@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server'
 import crypto from 'node:crypto'
 import { applyTicketTag, type TicketTag } from '@/lib/ticket-tag'
-import { and, eq } from 'drizzle-orm'
+import { and, eq, isNotNull, sql } from 'drizzle-orm'
 import { db } from '@/lib/db'
-import { leads, products, reps } from '@/lib/db/schema'
-import { createTicketChannel, postToChannel } from '@/lib/discord'
+import { leads, products, reps, coaches } from '@/lib/db/schema'
+import { createTicketChannel, postToChannel, dget, matchKnownPromo, detectReferralCode } from '@/lib/discord'
 import { ingestTicketLead, nextDealNumber } from '@/lib/leads-ingest'
 import { postAdminNotify } from '@/lib/discord-posts'
 import { createOrderForLead } from '@/lib/deal'
@@ -73,6 +73,49 @@ function priceLine(baseCents: number, lead: { promoCodeUsed?: string | null } | 
   const price = effectivePrice(baseCents, lead)
   if (price === baseCents) return formatCents(price)
   return `~~${formatCents(baseCents)}~~ ${formatCents(price)} (promo ${lead!.promoCodeUsed}, ${formatCents(baseCents - price)} off)`
+}
+
+/**
+ * Catch a promo code the buyer typed anywhere in the ticket, right now, at pay
+ * time. Attribution normally happens on the hourly poll reading the first
+ * message, which is too slow for a live sale, so at checkout we scan the recent
+ * ticket messages, match a known coach code, and set it on the lead so the
+ * discount and referral credit apply immediately. Returns the lead, updated.
+ */
+async function resolvePromoFromTicket<
+  T extends { id: string; promoCodeUsed?: string | null; discordUserId?: string | null },
+>(lead: T, channelId: string): Promise<T> {
+  if (lead.promoCodeUsed) return lead
+  try {
+    const msgs = await dget<{ content: string; author: { id: string } }[]>(
+      `/channels/${channelId}/messages?limit=30`,
+    )
+    const text = msgs
+      .filter((m) => !lead.discordUserId || m.author?.id === lead.discordUserId)
+      .map((m) => m.content)
+      .filter(Boolean)
+      .join('\n')
+    if (!text.trim()) return lead
+    const promoRows = await db
+      .select({ promoCode: coaches.promoCode })
+      .from(coaches)
+      .where(isNotNull(coaches.promoCode))
+    const codes = promoRows.map((r) => r.promoCode!).filter(Boolean)
+    const matched = matchKnownPromo(text, codes) ?? detectReferralCode(text)
+    if (!matched) return lead
+    const coach = await db.query.coaches.findFirst({
+      where: sql`lower(${coaches.promoCode}) = lower(${matched})`,
+    })
+    if (!coach?.promoCode) return lead
+    await db
+      .update(leads)
+      .set({ referralCode: matched, promoCodeUsed: coach.promoCode, sourceCoachId: coach.id, source: 'affiliate' })
+      .where(eq(leads.id, lead.id))
+    lead.promoCodeUsed = coach.promoCode
+    return lead
+  } catch {
+    return lead
+  }
 }
 
 /** Post the ticket controls: a product picker (buyer) + staff action buttons. */
@@ -274,11 +317,14 @@ export async function POST(req: Request): Promise<NextResponse> {
       }
       const guildId = interaction.guild_id
       const ticketUrl = lead.ticketLink ?? (guildId ? `https://discord.com/channels/${guildId}/${channelId}` : 'https://discord.com/channels/@me')
-      const price = effectivePrice(product.priceCents, lead)
-      const priceText = priceLine(product.priceCents, lead)
+      // Catch a promo code the buyer typed in the ticket right now, so the $10
+      // discount and referral credit land at pay time, not on the hourly poll.
+      const paidLead = await resolvePromoFromTicket(lead, channelId)
+      const price = effectivePrice(product.priceCents, paidLead)
+      const priceText = priceLine(product.priceCents, paidLead)
       const dealLine = `Deal: DEAL-${lead.dealNumber}`
       const customerLine = `Customer: ${lead.discordUsername}`
-      const productLine = `Product: ${product.name} (${formatCents(price)}${price !== product.priceCents ? `, promo ${lead.promoCodeUsed}` : ''})`
+      const productLine = `Product: ${product.name} (${formatCents(price)}${price !== product.priceCents ? `, promo ${paidLead.promoCodeUsed}` : ''})`
 
       if (method === 'card') {
         const stripe = stripeStatus()
