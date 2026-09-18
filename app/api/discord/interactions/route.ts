@@ -286,12 +286,20 @@ export async function POST(req: Request): Promise<NextResponse> {
         }
         if (lead && (lead.status === 'new_lead' || lead.status === 'contacted')) patch.status = 'product_selected'
         await db.update(leads).set(patch).where(eq(leads.discordChannelId, channelId))
-        await postPaymentPicker(channelId, product.name, priceLine(product.priceCents, lead))
+        // Catch a promo code the buyer already typed so the pay card shows the
+        // discounted price now. It used to resolve only when they clicked pay,
+        // so the card showed full price and looked like the discount was broken.
+        const fresh = await db.query.leads.findFirst({ where: eq(leads.discordChannelId, channelId) })
+        const selLead = fresh ? await resolvePromoFromTicket(fresh, channelId) : lead
+        await postPaymentPicker(channelId, product.name, priceLine(product.priceCents, selLead))
+        return NextResponse.json({
+          type: 4,
+          data: { content: `Selected **${product.name}** (${formatCents(effectivePrice(product.priceCents, selLead))}). Pick a payment method below.`, flags: EPHEMERAL },
+        })
       }
-      const selLead = product ? await db.query.leads.findFirst({ where: eq(leads.discordChannelId, channelId) }) : null
       return NextResponse.json({
         type: 4,
-        data: { content: product ? `Selected **${product.name}** (${formatCents(effectivePrice(product.priceCents, selLead))}). Pick a payment method below.` : 'Not found.', flags: EPHEMERAL },
+        data: { content: 'Not found.', flags: EPHEMERAL },
       })
     }
 
