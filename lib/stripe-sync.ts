@@ -21,6 +21,7 @@ interface Charge {
   refunded: boolean
   disputed?: boolean
   created: number
+  payment_intent?: string | null
   billing_details?: { name: string | null; email: string | null }
 }
 
@@ -44,8 +45,9 @@ async function allCharges(k: string): Promise<Charge[]> {
  * Import real Stripe charges into the CRM as customers + orders so the tables
  * reflect actual sales (not just the Stripe revenue figure). Idempotent: a
  * charge already imported (orders.transactionId === charge.id) is skipped, but
- * its refund/dispute state is refreshed. Attributes to a coach when the buyer's
- * email matches a ticket's email. Returns counts.
+ * its refund/dispute state is refreshed and a missing coach is filled in.
+ * Attributes to a coach via the charge's payment intent (stamped on the ticket
+ * by the webhook), with the buyer's email as a fallback. Returns counts.
  */
 export async function syncStripeOrders(): Promise<{
   created: number
@@ -59,7 +61,13 @@ export async function syncStripeOrders(): Promise<{
   const charges = (await allCharges(k)).filter((c) => c.paid && (c.status === 'succeeded' || c.amount_refunded > 0))
   const [productRows, existingOrders, leadRows, coachRows] = await Promise.all([
     db.select().from(products),
-    db.select({ id: orders.id, transactionId: orders.transactionId, paymentStatus: orders.paymentStatus }).from(orders),
+    db.select({
+      id: orders.id,
+      transactionId: orders.transactionId,
+      paymentStatus: orders.paymentStatus,
+      sourceCoachId: orders.sourceCoachId,
+      priceCents: orders.priceCents,
+    }).from(orders),
     db.select().from(leads),
     db.select().from(coaches),
   ])
@@ -67,7 +75,17 @@ export async function syncStripeOrders(): Promise<{
   const leadByEmail = new Map(
     leadRows.filter((l) => l.email).map((l) => [l.email!.toLowerCase(), l])
   )
+  // The webhook stamps the lead with the charge's payment intent (`paymentRef`).
+  // That is the reliable link for a Discord sale, whose ticket has no email of
+  // its own; matching on `billing_details.email` misses because Checkout charges
+  // usually carry no billing email.
+  const leadByPI = new Map(
+    leadRows.filter((l) => l.paymentRef).map((l) => [l.paymentRef!, l])
+  )
   const coachById = new Map(coachRows.map((c) => [c.id, c]))
+  const leadForCharge = (c: Charge, email: string | null) =>
+    (c.payment_intent ? leadByPI.get(c.payment_intent) : undefined) ??
+    (email ? leadByEmail.get(email) : undefined)
 
   const productForAmount = (amt: number) => productRows.find((p) => p.priceCents === amt)?.name ?? 'TikTok Shop Account'
 
@@ -89,6 +107,30 @@ export async function syncStripeOrders(): Promise<{
         await db.update(orders).set({ paymentStatus: payStatus, status: payStatus }).where(eq(orders.id, existing.id))
         updated++
       } else skipped++
+      // Self-heal attribution: an order imported before we matched on the
+      // payment intent can sit with no coach even though its ticket used a
+      // promo. Attach the coach and its commission retroactively.
+      if (!existing.sourceCoachId) {
+        const lead = leadForCharge(c, email)
+        const coachId = lead?.sourceCoachId ?? null
+        const coach = coachId ? coachById.get(coachId) : null
+        if (coachId && coach) {
+          const commissionCents = commissionForSale(existing.priceCents, coach)
+          const money = computeOrderMoney({ priceCents: existing.priceCents, commissionCents })
+          await db
+            .update(orders)
+            .set({
+              leadId: lead!.id,
+              sourceCoachId: coachId,
+              promoCodeUsed: coach.promoCode ?? lead!.promoCodeUsed ?? null,
+              commissionCents: money.commissionCents,
+              netProfitCents: money.netProfitCents,
+            })
+            .where(eq(orders.id, existing.id))
+          await syncOrderCommission(existing.id)
+          touchedCoaches.add(coachId)
+        }
+      }
       continue
     }
 
@@ -107,8 +149,9 @@ export async function syncStripeOrders(): Promise<{
       await db.update(customers).set({ email }).where(eq(customers.id, customer.id))
     }
 
-    // Attribute to a coach if the buyer's email matches a ticket's email.
-    const lead = email ? leadByEmail.get(email) : undefined
+    // Attribute to a coach via the charge's payment intent (set on the ticket
+    // by the webhook), falling back to the buyer's email.
+    const lead = leadForCharge(c, email)
     const coachId = lead?.sourceCoachId ?? null
     const coach = coachId ? coachById.get(coachId) : null
 
