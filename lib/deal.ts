@@ -5,7 +5,7 @@ import { computeOrderMoney, commissionForSale, formatCents } from './money'
 import { syncOrderCommission } from './commissions'
 import { createDeliveryTaskForOrder, recomputeOrderRollups } from './automations'
 import { logAudit } from './audit'
-import { postAdminNotify } from './discord-posts'
+import { postAdminNotify, postVouchRequest } from './discord-posts'
 import { getUserAvatarUrl } from './discord'
 
 type PaymentMethodValue = (typeof paymentMethodEnum.enumValues)[number]
@@ -115,5 +115,7 @@ export async function createOrderForLead(leadId: string, input: CreateOrderInput
     ],
     0x22c55e
   )
+  // Auto-prompt the buyer for a review in their ticket right after delivery.
+  await postVouchRequest(lead.discordChannelId)
   return order.id
 }
