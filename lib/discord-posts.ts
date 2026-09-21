@@ -16,6 +16,40 @@ function adminChannel(): string | null {
   return process.env.ADMIN_NOTIFY_CHANNEL_ID || process.env.STAFF_CHANNEL_ID || null
 }
 
+// Public channel where happy buyers leave reviews. When set, the post-sale
+// vouch prompt links straight to it; otherwise it just names "the vouches channel".
+function vouchesChannel(): string | null {
+  return process.env.VOUCHES_CHANNEL_ID || null
+}
+
+/**
+ * Auto-prompt the buyer for a review in their own ticket, right after their
+ * deal is completed, so it happens on every sale without staff doing anything.
+ * Best-effort: a failure here never blocks completing the deal.
+ */
+export async function postVouchRequest(
+  ticketChannelId: string | null | undefined,
+): Promise<boolean> {
+  if (!ticketChannelId) return false
+  const vch = vouchesChannel()
+  const where = vch ? `in <#${vch}>` : 'in the vouches channel'
+  try {
+    return await postToChannel(ticketChannelId, {
+      embeds: [
+        {
+          title: '⭐ Enjoying your account?',
+          description:
+            `Thanks for your order! If you're happy with it, dropping a quick review ${where} would mean a lot — it helps other buyers trust the shop.\n\n` +
+            'A short screen recording or a couple of lines of text both work. Appreciate you!',
+          color: 0xf5c542,
+        },
+      ],
+    })
+  } catch {
+    return false
+  }
+}
+
 /** Post the sales panel (buttons that open a ticket) to a public channel (spec §3). */
 export async function postSalesPanel(channelId: string): Promise<boolean> {
   return postToChannel(channelId, {
