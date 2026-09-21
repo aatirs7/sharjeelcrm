@@ -20,6 +20,9 @@ on:
       branch:
         description: Existing PR branch to tweak (leave empty for a new request)
         required: false
+      model:
+        description: Override the model(s) to try, space separated (defaults to a reliable fallback list)
+        required: false
 
 permissions:
   contents: write
@@ -71,6 +74,7 @@ jobs:
           TASK: ${{ github.event.inputs.task }}
           WORK: ${{ steps.refs.outputs.work }}
           TWEAK: ${{ steps.refs.outputs.tweak }}
+          MODEL_INPUT: ${{ github.event.inputs.model }}
         run: |
           set -e
           if [ "$TWEAK" = "yes" ]; then
@@ -88,10 +92,25 @@ jobs:
           # exactly as a trusted Claude Code session would.
           CLAUDE="npx --yes @anthropic-ai/claude-code@latest"
           $CLAUDE --version || true
-          $CLAUDE -p "$PROMPT" \
-            --model claude-fable-5-1 \
-            --dangerously-skip-permissions \
-            --max-turns 200 || true
+
+          # Try models in order and stop at the first that actually changes a
+          # file. A per-model usage limit (Fable's limit was silently swallowing
+          # every build and leaving tasks stuck) now just falls through to the
+          # next model. Override the list with the `model` input.
+          MODELS="${MODEL_INPUT:-claude-sonnet-5 claude-fable-5-1}"
+          for MODEL in $MODELS; do
+            echo "::group::Agent attempt with $MODEL"
+            $CLAUDE -p "$PROMPT" \
+              --model "$MODEL" \
+              --dangerously-skip-permissions \
+              --max-turns 200 || true
+            echo "::endgroup::"
+            if [ -n "$(git status --porcelain | grep -v 'PR_SUMMARY.md' || true)" ]; then
+              echo "Changes produced with $MODEL."
+              break
+            fi
+            echo "$MODEL made no changes (likely a usage limit); trying the next model."
+          done
 
           if [ -f PR_SUMMARY.md ]; then
             cp PR_SUMMARY.md /tmp/pr_summary.md
