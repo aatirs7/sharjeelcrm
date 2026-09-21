@@ -97,7 +97,7 @@ jobs:
           # file. A per-model usage limit (Fable's limit was silently swallowing
           # every build and leaving tasks stuck) now just falls through to the
           # next model. Override the list with the `model` input.
-          MODELS="${MODEL_INPUT:-claude-sonnet-5 claude-fable-5-1}"
+          MODELS="${MODEL_INPUT:-claude-opus-5 claude-sonnet-5}"
           for MODEL in $MODELS; do
             echo "::group::Agent attempt with $MODEL"
             $CLAUDE -p "$PROMPT" \
