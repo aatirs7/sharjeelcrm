@@ -43,6 +43,12 @@ export async function postVouchRequest(
             'A short screen recording or a couple of lines of text both work. Appreciate you!',
           color: 0xf5c542,
         },
+        {
+          title: '💸 Earn $100 per referral',
+          description:
+            'If you know anyone else who needs one, you can make $100 for every completed referral. Just ask a team member here and we will set you up with your own referral link.',
+          color: 0x22c55e,
+        },
       ],
     })
   } catch {
