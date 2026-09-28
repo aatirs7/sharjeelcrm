@@ -309,6 +309,11 @@ export const orders = pgTable('orders', {
   warrantyDays: integer('warranty_days').notNull().default(30),
   warrantyStart: timestamp('warranty_start', { withTimezone: true }),
   warrantyEnd: timestamp('warranty_end', { withTimezone: true }),
+  // Post-sale review + referral prompt is sent a couple of days after the deal
+  // (not immediately). `vouchDueAt` is when it becomes eligible; `vouchPostedAt`
+  // is set once the daily sweep has delivered it. Null due = never scheduled.
+  vouchDueAt: timestamp('vouch_due_at', { withTimezone: true }),
+  vouchPostedAt: timestamp('vouch_posted_at', { withTimezone: true }),
   status: orderStatus('status').notNull().default('paid'),
   createdAt: createdAt(),
   updatedAt: updatedAt(),

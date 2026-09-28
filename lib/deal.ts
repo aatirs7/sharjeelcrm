@@ -5,7 +5,7 @@ import { computeOrderMoney, commissionForSale, formatCents } from './money'
 import { syncOrderCommission } from './commissions'
 import { createDeliveryTaskForOrder, recomputeOrderRollups } from './automations'
 import { logAudit } from './audit'
-import { postAdminNotify, postVouchRequest } from './discord-posts'
+import { postAdminNotify } from './discord-posts'
 import { getUserAvatarUrl } from './discord'
 
 type PaymentMethodValue = (typeof paymentMethodEnum.enumValues)[number]
@@ -68,6 +68,13 @@ export async function createOrderForLead(leadId: string, input: CreateOrderInput
   const commissionCents = commissionForSale(priceCents, coach ?? null)
   const money = computeOrderMoney({ priceCents, commissionCents })
 
+  // Schedule the review + referral prompt for a couple of days after the sale
+  // instead of firing it the instant the deal completes; the daily sweep sends
+  // any that have come due. Default 2 days, so buyers see it once the account
+  // has had time to settle.
+  const vouchDelayDays = Number(process.env.VOUCH_DELAY_DAYS || '2')
+  const vouchDueAt = new Date(Date.now() + vouchDelayDays * 24 * 60 * 60 * 1000)
+
   const [order] = await db
     .insert(orders)
     .values({
@@ -89,6 +96,7 @@ export async function createOrderForLead(leadId: string, input: CreateOrderInput
       paymentStatus: 'paid',
       paidAt: new Date(),
       status: 'paid',
+      vouchDueAt,
     })
     .returning()
 
@@ -115,7 +123,7 @@ export async function createOrderForLead(leadId: string, input: CreateOrderInput
     ],
     0x22c55e
   )
-  // Auto-prompt the buyer for a review in their ticket right after delivery.
-  await postVouchRequest(lead.discordChannelId)
+  // The review + referral prompt is not sent here; it is scheduled via
+  // `vouchDueAt` and delivered by the daily sweep a couple of days later.
   return order.id
 }

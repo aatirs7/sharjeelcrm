@@ -4,7 +4,7 @@ import { db } from '@/lib/db'
 import { orders, tasks } from '@/lib/db/schema'
 import { flagExpiringWarranties } from '@/lib/automations'
 import { sweepCommissions, assignMonthlyTiers, finalizePreviousMonth } from '@/lib/commissions'
-import { postWeeklyLeaderboard, postDailyReport } from '@/lib/discord-posts'
+import { postWeeklyLeaderboard, postDailyReport, postDueVouchRequests } from '@/lib/discord-posts'
 import { deleteStaleTicketChannels } from '@/lib/discord'
 import { scanFraud } from '@/lib/fraud'
 import { assignAchievements } from '@/lib/achievements'
@@ -49,11 +49,20 @@ async function handle(req: Request): Promise<NextResponse> {
   // Prune ticket channels older than the retention window so the guild stays
   // under Discord's ~500-channel cap. Capped per run; drains a backlog gradually.
   const guildId = process.env.GUILD_ID
-  const retentionDays = Number(process.env.TICKET_RETENTION_DAYS || '30')
+  const retentionDays = Number(process.env.TICKET_RETENTION_DAYS || '60')
   const ticketCleanup =
     guildId && process.env.BOT_TOKEN
       ? await deleteStaleTicketChannels(guildId, retentionDays)
       : { eligible: 0, deleted: 0 }
+
+  // Send the delayed post-sale review + referral prompt for deals that have come
+  // due. Isolated so a Discord failure never aborts the rest of the sweep.
+  let vouchRequests = { posted: 0, eligible: 0 }
+  try {
+    vouchRequests = await postDueVouchRequests()
+  } catch {
+    vouchRequests = { posted: 0, eligible: 0 }
+  }
 
   const [expiredRow, overdueRow] = await Promise.all([
     db
@@ -85,6 +94,8 @@ async function handle(req: Request): Promise<NextResponse> {
     dailyReportPosted,
     ticketChannelsEligible: ticketCleanup.eligible,
     ticketChannelsDeleted: ticketCleanup.deleted,
+    vouchRequestsEligible: vouchRequests.eligible,
+    vouchRequestsPosted: vouchRequests.posted,
   })
 }
 
