@@ -46,11 +46,17 @@ export async function assignAchievements(): Promise<number> {
           .returning({ id: coachAchievements.id })
         if (res.length) {
           unlocked++
-          await postAdminNotify('🏅 Achievement unlocked', [`${coach.name} — ${a.label}`], 0xf59e0b)
-          if (process.env.AFFILIATE_CHANNEL_ID) {
-            await postToChannel(process.env.AFFILIATE_CHANNEL_ID, {
-              embeds: [{ title: '🏅 Achievement unlocked', description: `**${coach.name}** earned **${a.label}**!`, color: 0xf59e0b }],
-            })
+          // The achievement is still recorded (coach dashboards show the badge);
+          // the Discord announcements are opt-in and muted by default, since the
+          // per-milestone pings read as spam in the server. Set
+          // ANNOUNCE_ACHIEVEMENTS=true to turn the posts back on.
+          if (process.env.ANNOUNCE_ACHIEVEMENTS === 'true') {
+            await postAdminNotify('🏅 Achievement unlocked', [`${coach.name} — ${a.label}`], 0xf59e0b)
+            if (process.env.AFFILIATE_CHANNEL_ID) {
+              await postToChannel(process.env.AFFILIATE_CHANNEL_ID, {
+                embeds: [{ title: '🏅 Achievement unlocked', description: `**${coach.name}** earned **${a.label}**!`, color: 0xf59e0b }],
+              })
+            }
           }
         }
       }
