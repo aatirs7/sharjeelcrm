@@ -84,7 +84,7 @@ export async function POST(req: Request): Promise<NextResponse> {
       embeds: [
         {
           title: '✅ Payment received',
-          description: `Thanks${amount ? `, ${amount} received` : ''}! We will send your login details within 24 hours.`,
+          description: `Thanks${amount ? `, ${amount} received` : ''}! We will send your login details within 24-48 hours.`,
           color: 0x22c55e,
         },
       ],
