@@ -6,7 +6,7 @@ import { getCurrentCoachId, isAdmin } from '@/lib/auth'
 import { getCoachPayouts } from '@/lib/queries/payouts'
 import { getLeaderboard } from '@/lib/queries/leaderboard'
 import { getCoachAchievements, ACHIEVEMENTS } from '@/lib/achievements'
-import { formatCents } from '@/lib/money'
+import { formatCents, COMMISSION_MODE, FLAT_COMMISSION_CENTS } from '@/lib/money'
 import { titleCase } from '@/lib/labels'
 import { MetricCard } from '@/components/dashboard/metric-card'
 import { RequestPayoutButton } from '@/components/payouts/payout-request'
@@ -111,7 +111,11 @@ export default async function CoachDashboard() {
           />
           <MetricCard label="Approved (payable)" value={formatCents(approvedCents)} accent="admin" />
           <MetricCard label="Paid to date" value={formatCents(paidCents)} />
-          <MetricCard label="Commission rate" value={`${(Number(coach.commissionRate) * 100).toFixed(0)}%`} />
+          {COMMISSION_MODE === 'flat' ? (
+            <MetricCard label="Per referral" value={formatCents(FLAT_COMMISSION_CENTS)} sub="flat, per completed sale" />
+          ) : (
+            <MetricCard label="Commission rate" value={`${(Number(coach.commissionRate) * 100).toFixed(0)}%`} />
+          )}
         </div>
         <div className="flex justify-center pt-1">
           <RequestPayoutButton availableCents={approvedCents} hasPending={hasPendingRequest} />
