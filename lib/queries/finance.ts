@@ -25,16 +25,27 @@ export interface FinanceStats {
   }[]
 }
 
-/** All money is integer cents. Pulls the full financial picture from orders + affiliates. */
-export async function getFinanceStats(): Promise<FinanceStats> {
+/**
+ * All money is integer cents. Pulls the full financial picture from orders +
+ * affiliates. `since` windows the order-level flows (revenue, split, commission,
+ * refunds, payment mix) to payments on or after that instant; pass null/undefined
+ * for all-time. Coach rollups (owed/paid, affiliate table) are always all-time —
+ * they are running balances, not a flow for the selected window.
+ */
+export async function getFinanceStats(since?: Date | null): Promise<FinanceStats> {
   const [allOrders, affs] = await Promise.all([
     db.select().from(orders),
     db.select().from(coaches),
   ])
 
-  const paid = allOrders.filter((o) => o.paymentStatus === 'paid')
+  const inWindow = (date: Date | string | null | undefined) =>
+    !since || (!!date && new Date(date).getTime() >= since.getTime())
+
+  const paid = allOrders.filter((o) => o.paymentStatus === 'paid' && inWindow(o.paidAt))
   const refunds = allOrders.filter(
-    (o) => o.paymentStatus === 'refunded' || o.paymentStatus === 'chargeback'
+    (o) =>
+      (o.paymentStatus === 'refunded' || o.paymentStatus === 'chargeback') &&
+      inWindow(o.paidAt)
   )
   const sum = <T>(arr: T[], f: (o: T) => number) => arr.reduce((s, o) => s + f(o), 0)
 
