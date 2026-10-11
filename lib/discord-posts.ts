@@ -54,6 +54,21 @@ async function deliverVouch(
   userId: string | null,
 ): Promise<boolean> {
   const embeds = vouchEmbeds()
+  // DM the buyer directly first — the owner wants the post-sale vouch +
+  // affiliate prompt to land in their DMs. Many Discord users have DMs from
+  // server members turned off, in which case the send returns 403 and we fall
+  // back to posting in their ticket channel (while it is still open).
+  if (userId) {
+    try {
+      const res = await dpost('/users/@me/channels', { recipient_id: userId })
+      if (res.ok) {
+        const dm = (await res.json()) as { id?: string }
+        if (dm?.id && (await postToChannel(dm.id, { embeds }))) return true
+      }
+    } catch {
+      // fall through to the ticket-channel path
+    }
+  }
   if (channelId) {
     try {
       const ch = await dget<{ name?: string }>(`/channels/${channelId}`)
@@ -61,18 +76,7 @@ async function deliverVouch(
         if (await postToChannel(channelId, { embeds })) return true
       }
     } catch {
-      // 404 / gone — fall through to the DM path.
-    }
-  }
-  if (userId) {
-    try {
-      const res = await dpost('/users/@me/channels', { recipient_id: userId })
-      if (res.ok) {
-        const dm = (await res.json()) as { id?: string }
-        if (dm?.id) return await postToChannel(dm.id, { embeds })
-      }
-    } catch {
-      return false
+      // 404 / gone
     }
   }
   return false
