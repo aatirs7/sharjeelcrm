@@ -26,18 +26,22 @@ function vouchesChannel(): string | null {
 function vouchEmbeds(): unknown[] {
   const vch = vouchesChannel()
   const where = vch ? `in <#${vch}>` : 'in the vouches channel'
+  const ach = affiliateChannel()
+  const join = ach
+    ? `Check out <#${ach}> to grab your own referral link.`
+    : 'Just ask a team member here and we will set you up with your own referral link.'
   return [
     {
       title: '⭐ How is the account treating you?',
       description:
-        `Hope everything is running smooth with your account! If you're happy with it, dropping a quick review ${where} would mean a lot — it helps other buyers trust the shop.\n\n` +
+        `Hope everything is running smooth with your account! If you're happy with it, dropping a quick review ${where} would mean a lot. It helps other buyers trust the shop.\n\n` +
         'A short screen recording or a couple of lines of text both work. Appreciate you!',
       color: 0xf5c542,
     },
     {
       title: '💸 Earn $100 per referral',
       description:
-        'If you know anyone else who needs one, you can make $100 for every completed referral. Just ask a team member here and we will set you up with your own referral link.',
+        `If you know anyone else who needs one, you can make $100 for every completed referral. ${join}`,
       color: 0x22c55e,
     },
   ]
