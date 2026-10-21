@@ -159,6 +159,17 @@ export async function syncStripeOrders(): Promise<{
     const commissionCents = commissionForSale(priceCents, coach ?? null)
     const money = computeOrderMoney({ priceCents, commissionCents })
 
+    // Card sales are created here, not through createOrderForLead, so this is
+    // where the post-sale vouch + affiliate prompt has to be scheduled. Only for
+    // paid orders tied to a ticket (we need a channel or buyer to message). The
+    // 14-day floor in postDueVouchRequests keeps old backfilled charges quiet.
+    const paidAt = new Date(c.created * 1000)
+    const vouchDelayDays = Number(process.env.VOUCH_DELAY_DAYS || '2')
+    const vouchDueAt =
+      payStatus === 'paid' && lead
+        ? new Date(paidAt.getTime() + vouchDelayDays * 24 * 60 * 60 * 1000)
+        : null
+
     const [order] = await db
       .insert(orders)
       .values({
@@ -176,8 +187,9 @@ export async function syncStripeOrders(): Promise<{
         paymentMethod: 'card',
         paymentStatus: payStatus,
         transactionId: c.id,
-        paidAt: new Date(c.created * 1000),
+        paidAt,
         status: payStatus === 'paid' ? 'paid' : payStatus,
+        vouchDueAt,
       })
       .returning()
     created++
