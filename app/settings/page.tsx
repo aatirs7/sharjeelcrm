@@ -1,17 +1,14 @@
 import { getSettings } from '@/lib/settings'
 import { getBotProfile } from '@/lib/discord'
-import { stripeStatus } from '@/lib/stripe'
 import { formatCents, FLAT_COMMISSION_CENTS } from '@/lib/money'
 import { Card, CardContent } from '@/components/ui/card'
 import { PageHeader, SectionLabel } from '@/components/page-header'
-import { RewardsForm, RepeatForm, BotAvatarForm, CryptoWalletsForm } from '@/components/settings/settings-forms'
+import { RewardsForm, RepeatForm, BotAvatarForm, CryptoWalletsForm, CardLinksForm } from '@/components/settings/settings-forms'
 
 export const dynamic = 'force-dynamic'
 
 export default async function SettingsPage() {
   const [s, bot] = await Promise.all([getSettings(), getBotProfile()])
-  const stripe = stripeStatus()
-  const webhookSet = !!process.env.STRIPE_WEBHOOK_SECRET
 
   return (
     <div className="space-y-8">
@@ -49,31 +46,17 @@ export default async function SettingsPage() {
               Once a buyer picks a product in their Discord ticket, the bot asks whether they want to pay by
               card or crypto.
             </p>
-            <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="space-y-3">
               <div>
-                <div className="font-medium">Card (Stripe)</div>
+                <div className="font-medium">Card payment links</div>
                 <div className="text-muted-foreground">
-                  {stripe.canCharge
-                    ? `The bot posts a Stripe checkout link for the product price (${stripe.mode} mode).`
-                    : stripe.configured
-                      ? 'The Stripe key is read-only, so a team member has to send the checkout link by hand.'
-                      : 'Stripe is not connected, so a team member has to send the checkout link by hand.'}
-                  {stripe.canCharge
-                    ? webhookSet
-                      ? ' Paid tickets are marked automatically.'
-                      : ' Add STRIPE_WEBHOOK_SECRET so paid tickets are marked automatically.'
-                    : ''}
+                  When a buyer chooses card, the bot posts the link saved for the exact amount they owe (so the
+                  promo price can have its own link). The buyer posts their receipt in the ticket, you check it
+                  came in, then press Mark Paid, which records the sale here. With no link for an amount, the
+                  bot pings you to send one by hand.
                 </div>
               </div>
-              <span
-                className={`rounded-full px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.18em] ${
-                  stripe.canCharge
-                    ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
-                    : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
-                }`}
-              >
-                {stripe.canCharge ? 'connected' : stripe.configured ? 'read-only' : 'not connected'}
-              </span>
+              <CardLinksForm links={s.cardPaymentLinks} />
             </div>
             <div className="space-y-3 border-t border-border/60 pt-4">
               <div>

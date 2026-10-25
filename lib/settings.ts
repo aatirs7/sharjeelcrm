@@ -18,6 +18,16 @@ export interface AppSettings {
   // Wallets the bot posts when a buyer picks "Crypto" in their ticket. With
   // none saved the buyer is told to wait for the owner's reply instead.
   cryptoAddresses: CryptoAddress[]
+  // Card payment links (e.g. Square) the bot and the website hand to a buyer,
+  // matched on the exact amount due (so a promo price can have its own link).
+  // With no link for an amount, staff are pinged to send one by hand.
+  cardPaymentLinks: CardPaymentLink[]
+}
+
+export interface CardPaymentLink {
+  amountCents: number
+  url: string
+  label: string // e.g. "US 100k" or "US 100k, promo price"
 }
 
 export interface CryptoAddress {
@@ -31,6 +41,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   repeatCommission: 'first_only',
   roleOverrides: { admin: [], manager: [] },
   cryptoAddresses: [],
+  cardPaymentLinks: [],
 }
 
 export async function getSettings(): Promise<AppSettings> {
@@ -47,6 +58,8 @@ export async function getSettings(): Promise<AppSettings> {
       (map.get('roleOverrides') as AppSettings['roleOverrides']) ?? DEFAULT_SETTINGS.roleOverrides,
     cryptoAddresses:
       (map.get('cryptoAddresses') as AppSettings['cryptoAddresses']) ?? DEFAULT_SETTINGS.cryptoAddresses,
+    cardPaymentLinks:
+      (map.get('cardPaymentLinks') as AppSettings['cardPaymentLinks']) ?? DEFAULT_SETTINGS.cardPaymentLinks,
   }
 }
 
@@ -69,4 +82,10 @@ export async function setSetting<K extends keyof AppSettings>(
     .insert(settings)
     .values({ key, value })
     .onConflictDoUpdate({ target: settings.key, set: { value } })
+}
+
+/** The saved card payment link for exactly this amount, if there is one. */
+export async function cardLinkFor(amountCents: number): Promise<CardPaymentLink | null> {
+  const links = await getSetting('cardPaymentLinks')
+  return links.find((l) => l.amountCents === amountCents) ?? null
 }

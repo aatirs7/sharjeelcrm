@@ -1,7 +1,6 @@
 import { getCurrentRep } from '@/lib/auth'
 import { getDashboardMetrics, getTodaySnapshot, type Period } from '@/lib/queries/dashboard'
-import { getStripeStats } from '@/lib/stripe'
-import { formatCents, splitRevenue, SUPPLIER_PCT, SERVICE_PCT, PROFIT_PCT } from '@/lib/money'
+import { formatCents, SUPPLIER_PCT, SERVICE_PCT, PROFIT_PCT } from '@/lib/money'
 import { titleCase } from '@/lib/labels'
 import { Card, CardContent } from '@/components/ui/card'
 import { MetricCard } from '@/components/dashboard/metric-card'
@@ -19,23 +18,19 @@ export default async function DashboardPage({
 
   const rep = await getCurrentRep()
   const isAdmin = rep?.role === 'admin' || rep?.role === 'owner'
-  const [m, stripe, today] = await Promise.all([
-    getDashboardMetrics(period),
-    getStripeStats(),
-    getTodaySnapshot(),
-  ])
+  const [m, today] = await Promise.all([getDashboardMetrics(period), getTodaySnapshot()])
 
-  // Stripe is the source of truth for money.
-  const live = stripe.configured && !stripe.error
-  const revenueCents = live ? (period === 'week' ? stripe.weekCents : stripe.monthCents) ?? 0 : m.revenueCents
-  const payCount = live ? (period === 'week' ? stripe.weekCount : stripe.monthCount) ?? 0 : m.paidOrders
+  // CRM orders are the source of truth for money: past Stripe charges were
+  // synced into orders, and card-link (Square) and crypto sales are recorded
+  // as orders by Mark Paid.
+  const revenueCents = m.revenueCents
+  const payCount = m.paidOrders
   const aovCents = payCount ? Math.round(revenueCents / payCount) : 0
-  const split = splitRevenue(revenueCents)
-  const payoutCents = live ? split.supplierPayoutCents : m.supplierPayoutCents
-  const serviceCents = live ? split.serviceFeeCents : m.serviceFeeCents
-  const profitCents = live ? split.profitCents : m.netProfitCents
-  const refundsCount = live ? stripe.refundedCount ?? 0 : m.refundsCount
-  const refundsCents = live ? stripe.refundedCents ?? 0 : m.refundsCents
+  const payoutCents = m.supplierPayoutCents
+  const serviceCents = m.serviceFeeCents
+  const profitCents = m.netProfitCents
+  const refundsCount = m.refundsCount
+  const refundsCents = m.refundsCents
 
   return (
     <div className="space-y-8">

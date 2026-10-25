@@ -2,8 +2,9 @@ import { NextResponse } from 'next/server'
 import { and, eq, isNotNull, sql } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { products, leads, coaches } from '@/lib/db/schema'
-import { createCheckoutSession, stripeStatus } from '@/lib/stripe'
-import { getSetting } from '@/lib/settings'
+import { cardLinkFor, getSetting } from '@/lib/settings'
+import { postAdminNotify } from '@/lib/discord-posts'
+import { formatCents } from '@/lib/money'
 
 export const dynamic = 'force-dynamic'
 
@@ -12,8 +13,9 @@ const PROMO_DISCOUNT_CENTS = 1000
 
 /**
  * The storefront website starts a checkout here. It creates a real CRM deal
- * (a lead) so the whole existing pipeline applies: the Stripe webhook marks it
- * paid by the leadId it carries, and staff see and fulfil it like any other.
+ * (a lead) so the whole existing pipeline applies. Card buyers are sent to the
+ * saved payment link for the amount; staff confirm the payment and convert the
+ * deal in the CRM, then fulfil it like any other.
  *
  * Server-to-server only: the website's server calls this with the shared
  * STOREFRONT_SECRET as a bearer token, so no browser ever sees it.
@@ -103,32 +105,24 @@ export async function POST(req: Request): Promise<NextResponse> {
     })
   }
 
-  // card
-  const stripe = stripeStatus()
-  if (!stripe.canCharge || price < 50) {
+  // card: hand back the saved payment link for exactly this amount.
+  const link = await cardLinkFor(price)
+  if (!link) {
+    await postAdminNotify(
+      '🌐 Website card checkout, no link',
+      [`Deal: DEAL-${lead.dealNumber}`, `Customer: ${label}`, `Email: ${cleanEmail}`, `Product: ${product.name} (${formatCents(price)})`, `No card payment link is saved for ${formatCents(price)}. Add one in CRM Settings → Payments, and email the buyer a link.`],
+      0xf59e0b,
+    )
     return NextResponse.json(
-      { error: 'Card checkout is unavailable right now. Please try crypto or contact us.' },
+      { error: 'Card checkout is unavailable for this item right now. Please pay with crypto or contact us.' },
       { status: 503 },
     )
   }
-  try {
-    const session = await createCheckoutSession({
-      leadId: lead.id,
-      dealNumber: lead.dealNumber,
-      productName: product.name,
-      amountCents: price,
-      returnUrl,
-      customerLabel: label,
-    })
-    await db
-      .update(leads)
-      .set({ paymentLink: session.url, stripeSessionId: session.id })
-      .where(eq(leads.id, lead.id))
-    return NextResponse.json({ method: 'card', url: session.url, dealNumber: lead.dealNumber })
-  } catch (e) {
-    return NextResponse.json(
-      { error: e instanceof Error ? e.message : 'Checkout failed' },
-      { status: 502 },
-    )
-  }
+  await db.update(leads).set({ paymentLink: link.url }).where(eq(leads.id, lead.id))
+  await postAdminNotify(
+    '🌐 Website card checkout',
+    [`Deal: DEAL-${lead.dealNumber}`, `Customer: ${label}`, `Email: ${cleanEmail}`, `Product: ${product.name} (${formatCents(price)})`, 'Sent to the card payment link. When the payment shows up in Square, open the deal in the CRM and convert it to an order.'],
+    0x3b82f6,
+  )
+  return NextResponse.json({ method: 'card', url: link.url, dealNumber: lead.dealNumber })
 }

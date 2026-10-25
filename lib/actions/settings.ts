@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 import { revalidatePath } from 'next/cache'
 import { requireAdmin } from '../auth'
-import { setSetting, type CryptoAddress } from '../settings'
+import { setSetting, type CryptoAddress, type CardPaymentLink } from '../settings'
 import { setBotAvatar } from '../discord'
 import { logAudit } from '../audit'
 
@@ -86,4 +86,37 @@ export async function applyBotAvatar(formData?: FormData): Promise<{ avatarUrl: 
   })
   revalidatePath('/settings')
   return { avatarUrl: profile.avatarUrl }
+}
+
+/**
+ * Card payment links (Square, or any hosted checkout) the bot and website hand
+ * to buyers, one per exact amount. Amounts come in as dollars.
+ */
+export async function saveCardPaymentLinks(
+  input: { amount: number | string; url: string; label?: string }[],
+): Promise<void> {
+  await requireAdmin()
+  const clean: CardPaymentLink[] = []
+  const seen = new Set<number>()
+  for (const row of input.slice(0, 30)) {
+    const url = String(row.url ?? '').trim()
+    if (!url) continue
+    if (!/^https:\/\/\S+$/.test(url)) throw new Error(`Not a valid https link: ${url.slice(0, 60)}`)
+    const amountCents = Math.round(Number(row.amount) * 100)
+    if (!Number.isFinite(amountCents) || amountCents <= 0) {
+      throw new Error('Each link needs the amount it charges, in dollars (e.g. 599)')
+    }
+    if (seen.has(amountCents)) throw new Error(`Two links for the same amount ($${(amountCents / 100).toFixed(2)})`)
+    seen.add(amountCents)
+    clean.push({ amountCents, url: url.slice(0, 500), label: String(row.label ?? '').trim().slice(0, 60) })
+  }
+  clean.sort((a, b) => a.amountCents - b.amountCents)
+  await setSetting('cardPaymentLinks', clean)
+  await logAudit({
+    action: 'settings.card_links',
+    entity: 'settings',
+    summary: `Updated card payment links (${clean.length} saved)`,
+    meta: { amounts: clean.map((c) => c.amountCents) },
+  })
+  revalidatePath('/settings')
 }

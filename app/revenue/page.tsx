@@ -79,15 +79,13 @@ export default async function RevenuePage({
   ])
   const maxMethod = Math.max(1, ...f.byMethod.map((m) => m.cents))
 
-  // When Stripe is connected, the headline money tracks real Stripe money and
-  // the 55/10/35 split is derived from it. Otherwise fall back to CRM orders.
+  // Headline money comes from CRM orders. Every past Stripe charge was synced
+  // into orders, and card-link (Square) and crypto sales are recorded as
+  // orders by Mark Paid, so orders are the one complete source now that Stripe
+  // is no longer the processor. `live` only gates the Stripe history panels.
   const live = stripe.configured && !stripe.error
-  const revenueCents = live
-    ? (period === 'week' ? stripe.weekCents : period === 'month' ? stripe.monthCents : stripe.grossCents) ?? 0
-    : f.revenueCents
-  const paidCount = live
-    ? (period === 'week' ? stripe.weekCount : period === 'month' ? stripe.monthCount : stripe.paidCount) ?? 0
-    : f.paidCount
+  const revenueCents = f.revenueCents
+  const paidCount = f.paidCount
 
   const split = splitRevenue(revenueCents)
   const supplierPayoutCents = split.supplierPayoutCents
@@ -122,7 +120,7 @@ export default async function RevenuePage({
       <PageHeader
         marker="revenue"
         title="Revenue"
-        meta={`${paidCount} payments · ${windowLabel}${live ? ` · stripe ${stripe.mode}` : ' · crm'}`}
+        meta={`${paidCount} payments · ${windowLabel} · crm`}
         action={
           <div className="flex flex-wrap items-center justify-center gap-2">
             <PeriodToggle period={period} basePath="/revenue" options={PERIOD_OPTIONS} />
@@ -133,7 +131,7 @@ export default async function RevenuePage({
 
       {/* FLOW: money earned in the selected window, and where it splits */}
       <section className="space-y-3">
-        <SectionLabel>money {windowLabel}{live ? ' · live from stripe' : ''}</SectionLabel>
+        <SectionLabel>money {windowLabel}</SectionLabel>
 
         <Card>
           <CardContent className="space-y-6 py-6">

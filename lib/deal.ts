@@ -18,14 +18,31 @@ export interface CreateOrderInput {
 }
 
 /**
- * Complete a deal: upsert the customer, create the paid order with money on
- * write, mark the deal `completed` (which is what fires the commission), fire
- * delivery task + rollups, audit, and notify. Shared by the CRM convert action
- * and the in-Discord "Mark completed" button. Returns the new order id.
+ * Record a sale: upsert the customer, create the paid order with money on
+ * write (which creates the coach commission), schedule the post-sale vouch
+ * prompt, fire delivery task + rollups, audit, and notify. Marks the deal
+ * `completed` unless `markCompleted: false` (used by Mark Paid, where delivery
+ * is still to come). Shared by the CRM convert action and the in-Discord Mark
+ * Paid / Mark Completed buttons. Idempotent per ticket. Returns the order id.
  */
-export async function createOrderForLead(leadId: string, input: CreateOrderInput): Promise<string> {
+export async function createOrderForLead(
+  leadId: string,
+  input: CreateOrderInput,
+  opts: { markCompleted?: boolean } = {},
+): Promise<string> {
+  const markCompleted = opts.markCompleted ?? true
   const lead = await db.query.leads.findFirst({ where: eq(leads.id, leadId) })
   if (!lead) throw new Error('Deal not found')
+
+  // One ticket is one sale. If it already has an order (Mark Paid then Mark
+  // Completed, or a synced card charge), reuse it rather than double-count.
+  const existingOrder = await db.query.orders.findFirst({ where: eq(orders.leadId, leadId) })
+  if (existingOrder) {
+    if (markCompleted && lead.status !== 'completed') {
+      await db.update(leads).set({ status: 'completed' }).where(eq(leads.id, leadId))
+    }
+    return existingOrder.id
+  }
 
   // Recognize repeat customers by stable Discord id first (§30), then username.
   let customer = lead.discordUserId
@@ -100,7 +117,9 @@ export async function createOrderForLead(leadId: string, input: CreateOrderInput
     })
     .returning()
 
-  await db.update(leads).set({ status: 'completed' }).where(eq(leads.id, leadId))
+  if (markCompleted) {
+    await db.update(leads).set({ status: 'completed' }).where(eq(leads.id, leadId))
+  }
   await createDeliveryTaskForOrder(order.id)
   await syncOrderCommission(order.id)
   await recomputeOrderRollups(order.id)

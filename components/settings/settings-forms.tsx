@@ -3,7 +3,7 @@
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
-import { applyBotAvatar, saveCryptoAddresses, saveLeaderboardRewards, saveRepeatCommission } from '@/lib/actions/settings'
+import { applyBotAvatar, saveCardPaymentLinks, saveCryptoAddresses, saveLeaderboardRewards, saveRepeatCommission } from '@/lib/actions/settings'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -215,6 +215,94 @@ export function CryptoWalletsForm({ wallets }: { wallets: WalletRow[] }) {
         </Button>
         <Button onClick={save} disabled={pending}>
           {pending ? 'Saving…' : 'Save wallets'}
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+type CardLinkRow = { amount: string; label: string; url: string }
+
+export function CardLinksForm({ links }: { links: { amountCents: number; label: string; url: string }[] }) {
+  const router = useRouter()
+  const [pending, startTransition] = useTransition()
+  const empty: CardLinkRow = { amount: '', label: '', url: '' }
+  const [rows, setRows] = useState<CardLinkRow[]>(
+    links.length
+      ? links.map((l) => ({ amount: (l.amountCents / 100).toString(), label: l.label, url: l.url }))
+      : [empty]
+  )
+
+  function update(i: number, patch: Partial<CardLinkRow>) {
+    setRows((r) => r.map((row, idx) => (idx === i ? { ...row, ...patch } : row)))
+  }
+
+  function save() {
+    startTransition(async () => {
+      try {
+        await saveCardPaymentLinks(rows)
+        toast.success('Card payment links saved')
+        router.refresh()
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : 'Could not save')
+      }
+    })
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="space-y-2">
+        {rows.map((row, i) => (
+          <div key={i} className="grid grid-cols-[90px_150px_1fr_auto] items-end gap-2">
+            <div className="space-y-1.5">
+              {i === 0 && <Label>Amount ($)</Label>}
+              <Input
+                value={row.amount}
+                inputMode="decimal"
+                placeholder="599"
+                onChange={(e) => update(i, { amount: e.target.value })}
+              />
+            </div>
+            <div className="space-y-1.5">
+              {i === 0 && <Label>Label</Label>}
+              <Input
+                value={row.label}
+                placeholder="US 100k"
+                onChange={(e) => update(i, { label: e.target.value })}
+              />
+            </div>
+            <div className="space-y-1.5">
+              {i === 0 && <Label>Payment link</Label>}
+              <Input
+                value={row.url}
+                placeholder="https://square.link/u/..."
+                className="font-mono text-xs"
+                onChange={(e) => update(i, { url: e.target.value })}
+              />
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              type="button"
+              onClick={() => setRows((r) => (r.length === 1 ? [empty] : r.filter((_, idx) => idx !== i)))}
+              aria-label="Remove link"
+            >
+              ✕
+            </Button>
+          </div>
+        ))}
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <Button
+          variant="outline"
+          type="button"
+          onClick={() => setRows((r) => [...r, empty])}
+          disabled={rows.length >= 30}
+        >
+          Add link
+        </Button>
+        <Button onClick={save} disabled={pending}>
+          {pending ? 'Saving…' : 'Save links'}
         </Button>
       </div>
     </div>

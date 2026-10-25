@@ -3,9 +3,9 @@ export function titleCase(value: string): string {
   return value.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
 }
 
-/** Friendly names for payment methods ("card" is Stripe Checkout). */
+/** Friendly names for payment methods ("card" is a hosted card payment link). */
 export const PAYMENT_METHOD_LABELS: Record<string, string> = {
-  card: 'Card (Stripe)',
+  card: 'Card',
   crypto: 'Crypto',
   paypal: 'PayPal',
   zelle: 'Zelle',
