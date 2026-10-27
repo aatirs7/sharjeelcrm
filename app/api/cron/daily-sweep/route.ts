@@ -9,6 +9,8 @@ import { deleteStaleTicketChannels } from '@/lib/discord'
 import { scanFraud } from '@/lib/fraud'
 import { assignAchievements } from '@/lib/achievements'
 import { syncStripeOrders } from '@/lib/stripe-sync'
+import { squareConfigured } from '@/lib/square'
+import { syncSquarePayments } from '@/lib/square-payments'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -36,6 +38,18 @@ async function handle(req: Request): Promise<NextResponse> {
   // Keep the CRM's orders/customers in step with real Stripe charges first, so
   // the rest of the sweep (commissions, rollups) sees the latest sales.
   const stripeSync = await syncStripeOrders()
+  // Square is the card processor now. The webhook records sales in real time;
+  // this catches any it missed in the last 3 days. Isolated so a Square outage
+  // never stops the rest of the sweep.
+  let squareSync: { checked: number; recorded: number; unmatched: number } | { error: string } = { checked: 0, recorded: 0, unmatched: 0 }
+  if (squareConfigured()) {
+    try {
+      const r = await syncSquarePayments(new Date(Date.now() - 3 * 86400_000), { notifyUnmatched: true })
+      squareSync = { checked: r.checked, recorded: r.recorded.length, unmatched: r.unmatched.length }
+    } catch (e) {
+      squareSync = { error: e instanceof Error ? e.message : 'square sync failed' }
+    }
+  }
   const flaggedWarranties = await flagExpiringWarranties()
   const commissionSweep = await sweepCommissions()
   const tiersChanged = await assignMonthlyTiers()
@@ -80,6 +94,7 @@ async function handle(req: Request): Promise<NextResponse> {
     ranAt: now.toISOString(),
     stripeOrdersCreated: stripeSync.created,
     stripeOrdersUpdated: stripeSync.updated,
+    squareSync,
     flaggedWarranties,
     expiredWarranties: expiredRow[0]?.n ?? 0,
     overdueTasks: overdueRow[0]?.n ?? 0,

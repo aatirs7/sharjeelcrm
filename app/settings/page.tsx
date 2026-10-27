@@ -1,4 +1,5 @@
 import { getSettings } from '@/lib/settings'
+import { checkSquareConnection, squareConfigured } from '@/lib/square'
 import { getBotProfile } from '@/lib/discord'
 import { formatCents, FLAT_COMMISSION_CENTS } from '@/lib/money'
 import { Card, CardContent } from '@/components/ui/card'
@@ -8,7 +9,11 @@ import { RewardsForm, RepeatForm, BotAvatarForm, CryptoWalletsForm, CardLinksFor
 export const dynamic = 'force-dynamic'
 
 export default async function SettingsPage() {
-  const [s, bot] = await Promise.all([getSettings(), getBotProfile()])
+  const [s, bot, square] = await Promise.all([
+    getSettings(),
+    getBotProfile(),
+    squareConfigured() ? checkSquareConnection() : Promise.resolve(null),
+  ])
 
   return (
     <div className="space-y-8">
@@ -46,14 +51,34 @@ export default async function SettingsPage() {
               Once a buyer picks a product in their Discord ticket, the bot asks whether they want to pay by
               card or crypto.
             </p>
-            <div className="space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <div className="font-medium">Card payment links</div>
+                <div className="font-medium">Card (Square)</div>
                 <div className="text-muted-foreground">
-                  When a buyer chooses card, the bot posts the link saved for the exact amount they owe (so the
-                  promo price can have its own link). The buyer posts their receipt in the ticket, you check it
-                  came in, then press Mark Paid, which records the sale here. With no link for an amount, the
-                  bot pings you to send one by hand.
+                  {square?.ok
+                    ? `Connected to ${square.locationName}. Each buyer gets their own Square checkout for the exact price, and the ticket marks itself paid and the sale is recorded here as soon as they pay.`
+                    : square
+                      ? `Square is set up but not responding: ${square.error}`
+                      : 'Square is not connected, so the bot uses the backup links below.'}
+                </div>
+              </div>
+              <span
+                className={`rounded-full px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.18em] ${
+                  square?.ok
+                    ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                    : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
+                }`}
+              >
+                {square?.ok ? 'connected' : 'not connected'}
+              </span>
+            </div>
+            <div className="space-y-3 border-t border-border/60 pt-4">
+              <div>
+                <div className="font-medium">Backup card links</div>
+                <div className="text-muted-foreground">
+                  Only used if Square checkout is unavailable: the bot posts the link saved for the exact amount
+                  owed. Payments through these links are matched to their ticket automatically when it is clear
+                  which ticket they belong to.
                 </div>
               </div>
               <CardLinksForm links={s.cardPaymentLinks} />

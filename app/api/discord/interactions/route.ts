@@ -10,6 +10,8 @@ import { postAdminNotify } from '@/lib/discord-posts'
 import { createOrderForLead } from '@/lib/deal'
 import { formatCents } from '@/lib/money'
 import { cardLinkFor, getSetting } from '@/lib/settings'
+import { effectivePrice } from '@/lib/pricing'
+import { createSquarePaymentLink, squareConfigured } from '@/lib/square'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -58,14 +60,6 @@ const PANEL = {
   other: { label: 'question', welcome: 'thanks for reaching out!', ticketType: 'question' as const, route: 'SHOP' },
 }
 
-/** Flat discount a buyer gets when they came in on a valid coach promo code. */
-const PROMO_DISCOUNT_CENTS = 1000
-
-/** The price a buyer actually pays: base minus the promo discount when the lead
- *  is attributed to a real promo code (promoCodeUsed is only set on a match). */
-function effectivePrice(baseCents: number, lead: { promoCodeUsed?: string | null } | null | undefined): number {
-  return lead?.promoCodeUsed ? Math.max(baseCents - PROMO_DISCOUNT_CENTS, 0) : baseCents
-}
 
 /** "$589.00 (promo SAVE10, $10.00 off)" style price line, or just the price. */
 function priceLine(baseCents: number, lead: { promoCodeUsed?: string | null } | null | undefined): string {
@@ -332,40 +326,76 @@ export async function POST(req: Request): Promise<NextResponse> {
       const productLine = `Product: ${product.name} (${formatCents(price)}${price !== product.priceCents ? `, promo ${paidLead.promoCodeUsed}` : ''})`
 
       if (method === 'card') {
-        // Card is paid through a hosted payment link (Square) saved in Settings
-        // for this exact amount. There is no automatic confirmation: the buyer
-        // posts their receipt, staff check it landed, then press Mark Paid,
-        // which records the sale in the CRM.
-        const link = await cardLinkFor(price)
-        if (link) {
+        // Card goes through Square. With the Square API connected, every ticket
+        // gets its own checkout whose order carries this deal's id, so paying it
+        // marks the ticket paid and records the sale automatically (webhook +
+        // daily sync). A saved shared link for the amount is only a fallback if
+        // Square errors; with neither, staff are pinged to send one.
+        const guildId = interaction.guild_id
+        const ticketUrl =
+          lead.ticketLink ?? (guildId ? `https://discord.com/channels/${guildId}/${channelId}` : undefined)
+        let url: string | null = null
+        let automatic = false
+        if (squareConfigured() && price >= 100) {
+          try {
+            const sq = await createSquarePaymentLink({
+              leadId: lead.id,
+              dealNumber: lead.dealNumber,
+              productName: product.name,
+              amountCents: price,
+              redirectUrl: ticketUrl,
+              buyerEmail: lead.email,
+            })
+            url = sq.url
+            automatic = true
+          } catch (e) {
+            await postAdminNotify(
+              '⚠️ Square checkout failed',
+              [dealLine, customerLine, productLine, `Error: ${e instanceof Error ? e.message : 'unknown'}`],
+              0xf59e0b
+            )
+          }
+        }
+        if (!url) {
+          const saved = await cardLinkFor(price)
+          if (saved) url = saved.url
+        }
+        if (url) {
           await db
             .update(leads)
-            .set({ paymentMethod: 'card', paymentLink: link.url, stripeSessionId: null, status: 'waiting_payment' })
+            .set({ paymentMethod: 'card', paymentLink: url, stripeSessionId: null, status: 'waiting_payment' })
             .where(eq(leads.id, lead.id))
           await postToChannel(channelId, {
             embeds: [
               {
                 title: '💳 Pay by card',
                 description:
-                  `**${product.name}**: ${priceText}
-
-` +
-                  'Tap the button below to pay securely by card. Once you have paid, post a screenshot of your receipt here and a team member will confirm it.',
+                  `**${product.name}**: ${priceText}\n\n` +
+                  (automatic
+                    ? 'Tap the button below to pay securely by card. This ticket updates automatically once your payment goes through.'
+                    : 'Tap the button below to pay securely by card. Once you have paid, post a screenshot of your receipt here and a team member will confirm it.'),
                 color: 0x22c55e,
               },
             ],
             components: [
-              { type: 1, components: [{ type: 2, style: 5, label: 'Pay by card', emoji: { name: '🔒' }, url: link.url }] },
+              { type: 1, components: [{ type: 2, style: 5, label: 'Pay by card', emoji: { name: '🔒' }, url }] },
             ],
           })
           await postAdminNotify(
             '💳 Card link sent',
-            [dealLine, customerLine, productLine, `Payment link for ${formatCents(price)} posted. When the payment shows up in Square, press Mark Paid in the ticket.`],
+            [
+              dealLine,
+              customerLine,
+              productLine,
+              automatic
+                ? `Square checkout for ${formatCents(price)} posted. The ticket marks itself paid when the buyer pays.`
+                : `Shared payment link for ${formatCents(price)} posted (Square checkout was unavailable). Check Square for the payment.`,
+            ],
             0x3b82f6
           )
           return NextResponse.json({ type: 4, data: { content: 'Your secure card payment link is posted above.', flags: EPHEMERAL } })
         }
-        // No link saved for this amount: staff send one by hand.
+        // No link at all for this amount: staff send one by hand.
         await db
           .update(leads)
           .set({ paymentMethod: 'card', status: 'waiting_payment' })
@@ -374,16 +404,14 @@ export async function POST(req: Request): Promise<NextResponse> {
           embeds: [
             {
               title: '💳 Card payment',
-              description: `**${product.name}**: ${priceText}
-
-A team member will send your secure card payment link here shortly.`,
+              description: `**${product.name}**: ${priceText}\n\nA team member will send your secure card payment link here shortly.`,
               color: 0x3b82f6,
             },
           ],
         })
         await postAdminNotify(
           '💳 Buyer chose card, send a link',
-          [dealLine, customerLine, productLine, `No card payment link is saved for ${formatCents(price)}. Send the buyer one by hand, or add it in CRM Settings → Payments so the bot posts it next time.`],
+          [dealLine, customerLine, productLine, `Square checkout is unavailable and no payment link is saved for ${formatCents(price)}. Send the buyer a link by hand.`],
           0xf59e0b
         )
         return NextResponse.json({ type: 4, data: { content: 'Noted, a team member will send your card payment link shortly.', flags: EPHEMERAL } })

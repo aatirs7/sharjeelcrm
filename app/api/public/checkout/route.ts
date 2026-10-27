@@ -3,6 +3,7 @@ import { and, eq, isNotNull, sql } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { products, leads, coaches } from '@/lib/db/schema'
 import { cardLinkFor, getSetting } from '@/lib/settings'
+import { createSquarePaymentLink, squareConfigured } from '@/lib/square'
 import { postAdminNotify } from '@/lib/discord-posts'
 import { formatCents } from '@/lib/money'
 
@@ -13,9 +14,9 @@ const PROMO_DISCOUNT_CENTS = 1000
 
 /**
  * The storefront website starts a checkout here. It creates a real CRM deal
- * (a lead) so the whole existing pipeline applies. Card buyers are sent to the
- * saved payment link for the amount; staff confirm the payment and convert the
- * deal in the CRM, then fulfil it like any other.
+ * (a lead) so the whole existing pipeline applies. Card buyers are sent to a
+ * Square checkout for this deal; the Square webhook records the sale when they
+ * pay, and staff fulfil it like any other.
  *
  * Server-to-server only: the website's server calls this with the shared
  * STOREFRONT_SECRET as a bearer token, so no browser ever sees it.
@@ -105,12 +106,34 @@ export async function POST(req: Request): Promise<NextResponse> {
     })
   }
 
-  // card: hand back the saved payment link for exactly this amount.
-  const link = await cardLinkFor(price)
-  if (!link) {
+  // card: a Square checkout of this deal's own (its order carries the lead id,
+  // so the webhook records the sale automatically). A saved shared link for the
+  // amount is the fallback if Square errors.
+  let url: string | null = null
+  let automatic = false
+  if (squareConfigured() && price >= 100) {
+    try {
+      const sq = await createSquarePaymentLink({
+        leadId: lead.id,
+        dealNumber: lead.dealNumber,
+        productName: product.name,
+        amountCents: price,
+        redirectUrl: returnUrl,
+        buyerEmail: cleanEmail,
+      })
+      url = sq.url
+      automatic = true
+    } catch (e) {
+      console.error('[public checkout] square link failed:', e)
+    }
+  }
+  if (!url) url = (await cardLinkFor(price))?.url ?? null
+
+  const who = [`Deal: DEAL-${lead.dealNumber}`, `Customer: ${label}`, `Email: ${cleanEmail}`, `Product: ${product.name} (${formatCents(price)})`]
+  if (!url) {
     await postAdminNotify(
-      '🌐 Website card checkout, no link',
-      [`Deal: DEAL-${lead.dealNumber}`, `Customer: ${label}`, `Email: ${cleanEmail}`, `Product: ${product.name} (${formatCents(price)})`, `No card payment link is saved for ${formatCents(price)}. Add one in CRM Settings → Payments, and email the buyer a link.`],
+      '🌐 Website card checkout failed',
+      [...who, `Square checkout is unavailable and no payment link is saved for ${formatCents(price)}. Email the buyer a link.`],
       0xf59e0b,
     )
     return NextResponse.json(
@@ -118,11 +141,16 @@ export async function POST(req: Request): Promise<NextResponse> {
       { status: 503 },
     )
   }
-  await db.update(leads).set({ paymentLink: link.url }).where(eq(leads.id, lead.id))
+  await db.update(leads).set({ paymentLink: url }).where(eq(leads.id, lead.id))
   await postAdminNotify(
     '🌐 Website card checkout',
-    [`Deal: DEAL-${lead.dealNumber}`, `Customer: ${label}`, `Email: ${cleanEmail}`, `Product: ${product.name} (${formatCents(price)})`, 'Sent to the card payment link. When the payment shows up in Square, open the deal in the CRM and convert it to an order.'],
+    [
+      ...who,
+      automatic
+        ? 'Sent to a Square checkout. The sale records itself in the CRM when they pay.'
+        : 'Sent to a shared payment link (Square checkout was unavailable). Check Square for the payment.',
+    ],
     0x3b82f6,
   )
-  return NextResponse.json({ method: 'card', url: link.url, dealNumber: lead.dealNumber })
+  return NextResponse.json({ method: 'card', url, dealNumber: lead.dealNumber })
 }
