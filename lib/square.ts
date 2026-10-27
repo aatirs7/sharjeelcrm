@@ -67,6 +67,9 @@ export interface SquarePayment {
   note?: string
   receipt_url?: string
   refunded_money?: SquareMoney
+  customer_id?: string
+  card_details?: { card?: { cardholder_name?: string; last_4?: string; card_brand?: string } }
+  billing_address?: { first_name?: string; last_name?: string }
 }
 export interface SquareRefund {
   id: string
@@ -183,4 +186,13 @@ export function verifySquareSignature(rawBody: string, signature: string | null)
     return { ok: false, reason: `signature mismatch (expected ${expected.slice(0, 8)}…, got ${signature.slice(0, 8)}…)` }
   }
   return { ok: true }
+}
+
+/** Name and email Square holds for a payer (customer record), for matching. */
+export async function getSquareCustomer(customerId: string): Promise<{ name: string | null; email: string | null }> {
+  const r = await squareFetch<{ customer: { given_name?: string; family_name?: string; email_address?: string } }>(
+    `/customers/${customerId}`,
+  )
+  const name = [r.customer.given_name, r.customer.family_name].filter(Boolean).join(' ') || null
+  return { name, email: r.customer.email_address ?? null }
 }

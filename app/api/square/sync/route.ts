@@ -3,7 +3,8 @@ import { timingSafeEqual } from 'node:crypto'
 import { eq } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { leads } from '@/lib/db/schema'
-import { checkSquareConnection, getSquareOrderReference, listSquarePayments } from '@/lib/square'
+import { inArray } from 'drizzle-orm'
+import { checkSquareConnection, getSquareCustomer, getSquareOrderReference, listSquarePayments } from '@/lib/square'
 import { alreadyRecorded, matchStaticPayment, syncSquarePayments } from '@/lib/square-payments'
 
 export const dynamic = 'force-dynamic'
@@ -50,6 +51,20 @@ export async function GET(req: Request): Promise<NextResponse> {
         alreadyRecorded: await alreadyRecorded(p.id),
         ticket: refLead ? `DEAL-${refLead.dealNumber} (from its own link)` : stat?.leadId ? `DEAL-${stat.candidates[0]} (only match)` : null,
         candidates: stat?.candidates ?? [],
+        payer: {
+          cardholder: p.card_details?.card?.cardholder_name ?? null,
+          billingName: [p.billing_address?.first_name, p.billing_address?.last_name].filter(Boolean).join(' ') || null,
+          card: p.card_details?.card ? `${p.card_details.card.card_brand ?? ''} ${p.card_details.card.last_4 ?? ''}`.trim() : null,
+          customer: p.customer_id ? await getSquareCustomer(p.customer_id).catch(() => null) : null,
+        },
+        candidateTickets: stat?.candidates?.length
+          ? (
+              await db
+                .select({ deal: leads.dealNumber, user: leads.discordUsername, email: leads.email, created: leads.createdAt, updated: leads.updatedAt })
+                .from(leads)
+                .where(inArray(leads.dealNumber, stat.candidates))
+            ).map((l) => ({ deal: l.deal, user: l.user, email: l.email, opened: l.created, linkSentOrLastUpdate: l.updated }))
+          : [],
       })
     }
     return NextResponse.json({ since: since.toISOString(), count: rows.length, payments: rows })
