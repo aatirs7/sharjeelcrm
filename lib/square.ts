@@ -67,6 +67,7 @@ export interface SquarePayment {
   note?: string
   receipt_url?: string
   refunded_money?: SquareMoney
+  processing_fee?: { amount_money: SquareMoney; type?: string }[]
   customer_id?: string
   card_details?: { card?: { cardholder_name?: string; last_4?: string; card_brand?: string } }
   billing_address?: { first_name?: string; last_name?: string }
@@ -195,4 +196,69 @@ export async function getSquareCustomer(customerId: string): Promise<{ name: str
   )
   const name = [r.customer.given_name, r.customer.family_name].filter(Boolean).join(' ') || null
   return { name, email: r.customer.email_address ?? null }
+}
+
+export interface SquarePayout {
+  id: string
+  status: 'SENT' | 'FAILED' | 'PAID'
+  amount_money: SquareMoney
+  arrival_date?: string
+  created_at: string
+}
+
+/** Every payout (deposit to the bank) for our location, newest first. */
+export async function listSquarePayouts(): Promise<SquarePayout[]> {
+  const out: SquarePayout[] = []
+  let cursor: string | undefined
+  for (let page = 0; page < 20; page++) {
+    const q = new URLSearchParams({ location_id: squareLocationId(), sort_order: 'DESC', limit: '100' })
+    if (cursor) q.set('cursor', cursor)
+    const r = await squareFetch<{ payouts?: SquarePayout[]; cursor?: string }>(`/payouts?${q}`)
+    out.push(...(r.payouts ?? []))
+    if (!r.cursor) break
+    cursor = r.cursor
+  }
+  return out
+}
+
+export interface SquareBalance {
+  /** Collected but not yet deposited: net of Square fees and refunds, minus payouts sent. */
+  balanceCents: number
+  /** Payouts on their way to the bank. */
+  inTransitCents: number
+  /** Payouts that have landed in the bank, all time. */
+  depositedCents: number
+  /** Net collected all time (payments minus fees and refunds). */
+  netCollectedCents: number
+  lastPayout: { amountCents: number; status: string; arrivalDate: string | null } | null
+}
+
+/**
+ * Square has no balance endpoint, so the balance is worked out the way the
+ * Square dashboard does: everything collected (after Square's fees and any
+ * refunds) minus everything already paid out or on its way.
+ */
+export async function getSquareBalance(): Promise<SquareBalance> {
+  const [payments, payouts] = await Promise.all([
+    listSquarePayments(new Date('2020-01-01T00:00:00Z')),
+    listSquarePayouts(),
+  ])
+  let netCollectedCents = 0
+  for (const p of payments) {
+    if (p.status !== 'COMPLETED') continue
+    const fees = (p.processing_fee ?? []).reduce((sum, f) => sum + f.amount_money.amount, 0)
+    netCollectedCents += p.amount_money.amount - fees - (p.refunded_money?.amount ?? 0)
+  }
+  const sum = (status: SquarePayout['status']) =>
+    payouts.filter((p) => p.status === status).reduce((s, p) => s + p.amount_money.amount, 0)
+  const depositedCents = sum('PAID')
+  const inTransitCents = sum('SENT')
+  const last = payouts.find((p) => p.status !== 'FAILED')
+  return {
+    balanceCents: netCollectedCents - depositedCents - inTransitCents,
+    inTransitCents,
+    depositedCents,
+    netCollectedCents,
+    lastPayout: last ? { amountCents: last.amount_money.amount, status: last.status, arrivalDate: last.arrival_date ?? null } : null,
+  }
 }

@@ -4,7 +4,7 @@ import { eq } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { leads } from '@/lib/db/schema'
 import { inArray } from 'drizzle-orm'
-import { checkSquareConnection, getSquareCustomer, getSquareOrderReference, getSquarePayment, listSquarePayments } from '@/lib/square'
+import { checkSquareConnection, getSquareBalance, getSquareCustomer, getSquareOrderReference, getSquarePayment, listSquarePayments } from '@/lib/square'
 import { alreadyRecorded, matchStaticPayment, recordForLead, syncSquarePayments } from '@/lib/square-payments'
 import { postDueVouchRequests } from '@/lib/discord-posts'
 
@@ -26,6 +26,7 @@ function authorized(req: Request): boolean {
  *   ?mode=preview&since=DATE    what a sync would record, without writing
  *   ?mode=sync&since=DATE       record completed payments (backfill / catch-up)
  *   ?mode=assign&payment=ID&deal=N  record one completed payment on a given ticket
+ *   ?mode=balance               computed Square balance (collected minus payouts)
  *   ?mode=vouch                 send vouch prompts that are due now (same as the daily sweep)
  */
 export async function GET(req: Request): Promise<NextResponse> {
@@ -83,6 +84,11 @@ export async function GET(req: Request): Promise<NextResponse> {
     const lead = await db.query.leads.findFirst({ where: eq(leads.dealNumber, deal), columns: { id: true } })
     if (!lead) return NextResponse.json({ error: `DEAL-${deal} not found` }, { status: 404 })
     return NextResponse.json(await recordForLead(lead.id, payment))
+  }
+
+  if (mode === 'balance') {
+    const [balance, payments] = await Promise.all([getSquareBalance(), listSquarePayments(new Date('2020-01-01T00:00:00Z'))])
+    return NextResponse.json({ balance, completedPayments: payments.filter((p) => p.status === 'COMPLETED').length, oldest: payments[0]?.created_at ?? null, samplePayment: payments.find((p) => p.status === 'COMPLETED') ? { fees: payments.find((p) => p.status === 'COMPLETED')!.processing_fee ?? null } : null })
   }
 
   if (mode === 'vouch') return NextResponse.json(await postDueVouchRequests())
