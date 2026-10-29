@@ -42,7 +42,7 @@ export async function alreadyRecorded(paymentId: string): Promise<boolean> {
 }
 
 /** Record a completed payment against a specific lead. */
-async function recordForLead(leadId: string, payment: SquarePayment): Promise<RecordResult> {
+export async function recordForLead(leadId: string, payment: SquarePayment): Promise<RecordResult> {
   const lead = await db.query.leads.findFirst({ where: eq(leads.id, leadId) })
   if (!lead) return { kind: 'unmatched', payment, candidates: [] }
 

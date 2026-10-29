@@ -1,9 +1,9 @@
 import Link from 'next/link'
-import { isNotNull } from 'drizzle-orm'
+import { eq, inArray } from 'drizzle-orm'
 import { db } from '@/lib/db'
-import { leads } from '@/lib/db/schema'
+import { leads, orders } from '@/lib/db/schema'
 import { getFinanceStats } from '@/lib/queries/finance'
-import { getStripeStats } from '@/lib/stripe'
+import { listSquarePayments, squareConfigured, type SquarePayment } from '@/lib/square'
 import {
   formatCents,
   splitRevenue,
@@ -28,7 +28,6 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Card, CardContent } from '@/components/ui/card'
-import { SyncStripeButton } from '@/components/revenue/sync-button'
 
 export const dynamic = 'force-dynamic'
 
@@ -59,8 +58,42 @@ const WINDOW_LABEL: Record<Period, string> = {
   week: 'this week',
 }
 
-function fmtDate(unix: number) {
-  return new Date(unix * 1000).toLocaleDateString([], { dateStyle: 'medium' })
+function fmtWhen(iso: string) {
+  return new Date(iso).toLocaleString('en-US', {
+    timeZone: 'America/New_York',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  })
+}
+
+/**
+ * Latest card payments straight from Square (the processor), each linked to
+ * the ticket it was recorded on. Square is the live feed; the headline money
+ * above comes from CRM orders.
+ */
+async function getSquareActivity(): Promise<
+  | { ok: true; payments: (SquarePayment & { ticket: { id: string; deal: number; user: string | null } | null })[] }
+  | { ok: false; error: string }
+> {
+  if (!squareConfigured()) return { ok: false, error: 'Square is not connected.' }
+  try {
+    const all = await listSquarePayments(new Date(Date.now() - 14 * 86400_000))
+    const recent = all.filter((p) => p.status === 'COMPLETED').reverse().slice(0, 25)
+    const ids = recent.map((p) => p.id)
+    const linked = ids.length
+      ? await db
+          .select({ tx: orders.transactionId, id: leads.id, deal: leads.dealNumber, user: leads.discordUsername })
+          .from(orders)
+          .innerJoin(leads, eq(leads.id, orders.leadId))
+          .where(inArray(orders.transactionId, ids))
+      : []
+    const byTx = new Map(linked.map((l) => [l.tx, { id: l.id, deal: l.deal, user: l.user }]))
+    return { ok: true, payments: recent.map((p) => ({ ...p, ticket: byTx.get(p.id) ?? null })) }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'Square request failed' }
+  }
 }
 
 export default async function RevenuePage({
@@ -73,17 +106,16 @@ export default async function RevenuePage({
     periodParam === 'week' ? 'week' : periodParam === 'month' ? 'month' : 'all'
   const windowLabel = WINDOW_LABEL[period]
 
-  const [f, stripe] = await Promise.all([
+  const [f, square] = await Promise.all([
     getFinanceStats(windowStart(period)),
-    getStripeStats(),
+    getSquareActivity(),
   ])
   const maxMethod = Math.max(1, ...f.byMethod.map((m) => m.cents))
 
   // Headline money comes from CRM orders. Every past Stripe charge was synced
   // into orders, and card-link (Square) and crypto sales are recorded as
   // orders by Mark Paid, so orders are the one complete source now that Stripe
-  // is no longer the processor. `live` only gates the Stripe history panels.
-  const live = stripe.configured && !stripe.error
+  // is no longer the processor.
   const revenueCents = f.revenueCents
   const paidCount = f.paidCount
 
@@ -104,17 +136,6 @@ export default async function RevenuePage({
     { key: 'profit', label: `Profit ${PROFIT_PCT}`, cents: grossProfitCents, pct: PROFIT_SHARE * 100, bar: 'bg-primary/60', dot: 'bg-primary' },
   ]
 
-  // Match recent Stripe charges to tickets by email.
-  const emailLeads = live
-    ? await db
-        .select({ id: leads.id, discordUsername: leads.discordUsername, email: leads.email })
-        .from(leads)
-        .where(isNotNull(leads.email))
-    : []
-  const leadByEmail = new Map(
-    emailLeads.filter((l) => l.email).map((l) => [l.email!.toLowerCase(), l])
-  )
-
   return (
     <div className="space-y-10">
       <PageHeader
@@ -124,7 +145,6 @@ export default async function RevenuePage({
         action={
           <div className="flex flex-wrap items-center justify-center gap-2">
             <PeriodToggle period={period} basePath="/revenue" options={PERIOD_OPTIONS} />
-            <SyncStripeButton />
           </div>
         }
       />
@@ -203,51 +223,17 @@ export default async function RevenuePage({
         </div>
       </section>
 
-      {/* BALANCES: current stocks, not tied to the window */}
+      {/* Commission owed: current stock, not tied to the window */}
       <section className="space-y-3">
-        <SectionLabel>balances · right now</SectionLabel>
-        {!stripe.configured ? (
-          <Card>
-            <CardContent className="py-5 text-sm text-muted-foreground">
-              Stripe is not connected, so live balances are unavailable. Add a{' '}
-              <span className="font-mono">secret</span> or read-only{' '}
-              <span className="font-mono">restricted</span> key as{' '}
-              <span className="font-mono">STRIPE_SECRET_KEY</span>.
-            </CardContent>
-          </Card>
-        ) : stripe.error ? (
-          <Card>
-            <CardContent className="py-4 text-sm text-rose-500">Stripe error: {stripe.error}</CardContent>
-          </Card>
-        ) : (
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <MetricCard
-              label="Available to withdraw"
-              value={formatCents(stripe.availableCents ?? 0)}
-              sub={stripe.currency ?? 'in stripe'}
-              accent="admin"
-            />
-            <MetricCard
-              label="Incoming"
-              value={formatCents(stripe.pendingCents ?? 0)}
-              sub="not yet settled"
-            />
-            <MetricCard
-              label="Already withdrawn"
-              value={formatCents(stripe.withdrawnCents ?? 0)}
-              sub={
-                stripe.payoutsInTransitCents
-                  ? `${formatCents(stripe.payoutsInTransitCents)} in transit`
-                  : 'paid to bank'
-              }
-            />
-            <MetricCard
-              label="Commission owed"
-              value={formatCents(f.commissionOwedCents)}
-              sub={`${formatCents(f.commissionPaidCents)} paid · all-time`}
-            />
-          </div>
-        )}
+        <SectionLabel>coach commission · right now</SectionLabel>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <MetricCard
+            label="Commission owed"
+            value={formatCents(f.commissionOwedCents)}
+            sub={`${formatCents(f.commissionPaidCents)} paid · all-time`}
+            accent="admin"
+          />
+        </div>
       </section>
 
       {/* Payment mix for the window */}
@@ -318,92 +304,63 @@ export default async function RevenuePage({
         </div>
       </section>
 
-      {/* Stripe activity (latest, not windowed) */}
-      {live && (
-        <section className="space-y-3">
-          <SectionLabel>stripe activity · latest</SectionLabel>
-          <div className="grid gap-6 lg:grid-cols-2">
-            <div className="overflow-hidden rounded-xl border bg-card">
-              <Table>
-                <TableHeader>
+      {/* Square activity (latest, not windowed) */}
+      <section className="space-y-3">
+        <SectionLabel>card payments · square · last 14 days</SectionLabel>
+        {!square.ok ? (
+          <Card>
+            <CardContent className="py-4 text-sm text-rose-500">{square.error}</CardContent>
+          </Card>
+        ) : (
+          <div className="overflow-hidden rounded-xl border bg-card">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Buyer</TableHead>
+                  <TableHead>Ticket</TableHead>
+                  <TableHead className="text-right">Amount</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {square.payments.length === 0 && (
                   <TableRow>
-                    <TableHead>Recent charge</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Amount</TableHead>
+                    <TableCell colSpan={3} className="py-6 text-center text-muted-foreground">
+                      No card payments in the last 14 days.
+                    </TableCell>
                   </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {(stripe.charges ?? []).length === 0 && (
-                    <TableRow>
-                      <TableCell colSpan={3} className="py-6 text-center text-muted-foreground">
-                        No charges.
-                      </TableCell>
-                    </TableRow>
-                  )}
-                  {(stripe.charges ?? []).map((c) => {
-                    const match = c.email ? leadByEmail.get(c.email.toLowerCase()) : null
-                    return (
-                      <TableRow key={c.id}>
-                        <TableCell className="text-sm">
-                          {c.name ?? c.email ?? c.id.slice(0, 14)}
-                          <div className="text-xs text-muted-foreground">
-                            {c.email ? `${c.email} · ` : ''}
-                            {fmtDate(c.created)}
-                          </div>
-                          {match ? (
-                            <Link
-                              href={`/tickets/${match.id}`}
-                              className="text-xs font-mono text-primary hover:underline"
-                            >
-                              → @{match.discordUsername}
-                            </Link>
-                          ) : (
-                            <span className="text-xs text-muted-foreground">unlinked</span>
-                          )}
-                        </TableCell>
-                        <TableCell className={cn('text-sm', c.status === 'succeeded' ? 'text-emerald-500' : 'text-muted-foreground')}>
-                          {c.status}
-                        </TableCell>
-                        <TableCell className="text-right tabular-nums">{formatCents(c.amountCents)}</TableCell>
-                      </TableRow>
-                    )
-                  })}
-                </TableBody>
-              </Table>
-            </div>
-            <div className="overflow-hidden rounded-xl border bg-card">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Payout</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Amount</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {(stripe.payouts ?? []).length === 0 && (
-                    <TableRow>
-                      <TableCell colSpan={3} className="py-6 text-center text-muted-foreground">
-                        No payouts.
-                      </TableCell>
-                    </TableRow>
-                  )}
-                  {(stripe.payouts ?? []).map((p) => (
+                )}
+                {square.payments.map((p) => {
+                  const refunded = (p.refunded_money?.amount ?? 0) > 0
+                  return (
                     <TableRow key={p.id}>
                       <TableCell className="text-sm">
-                        {p.id.slice(0, 16)}
-                        <div className="text-xs text-muted-foreground">arrives {fmtDate(p.arrival)}</div>
+                        {p.card_details?.card?.cardholder_name ?? p.buyer_email_address ?? p.id.slice(0, 14)}
+                        <div className="text-xs text-muted-foreground">
+                          {p.buyer_email_address ? `${p.buyer_email_address} · ` : ''}
+                          {fmtWhen(p.created_at)}
+                        </div>
                       </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">{p.status}</TableCell>
-                      <TableCell className="text-right tabular-nums">{formatCents(p.amountCents)}</TableCell>
+                      <TableCell className="text-sm">
+                        {p.ticket ? (
+                          <Link href={`/tickets/${p.ticket.id}`} className="font-mono text-xs text-primary hover:underline">
+                            DEAL-{p.ticket.deal}
+                            {p.ticket.user ? ` · @${p.ticket.user}` : ''}
+                          </Link>
+                        ) : (
+                          <span className="text-xs text-amber-500">not linked to a ticket yet</span>
+                        )}
+                      </TableCell>
+                      <TableCell className={cn('text-right tabular-nums', refunded && 'text-muted-foreground line-through')}>
+                        {formatCents(p.amount_money.amount)}
+                      </TableCell>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
+                  )
+                })}
+              </TableBody>
+            </Table>
           </div>
-        </section>
-      )}
+        )}
+      </section>
     </div>
   )
 }

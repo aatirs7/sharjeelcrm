@@ -4,8 +4,8 @@ import { eq } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { leads } from '@/lib/db/schema'
 import { inArray } from 'drizzle-orm'
-import { checkSquareConnection, getSquareCustomer, getSquareOrderReference, listSquarePayments } from '@/lib/square'
-import { alreadyRecorded, matchStaticPayment, syncSquarePayments } from '@/lib/square-payments'
+import { checkSquareConnection, getSquareCustomer, getSquareOrderReference, getSquarePayment, listSquarePayments } from '@/lib/square'
+import { alreadyRecorded, matchStaticPayment, recordForLead, syncSquarePayments } from '@/lib/square-payments'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -24,6 +24,7 @@ function authorized(req: Request): boolean {
  *   ?mode=check                 token + location work
  *   ?mode=preview&since=DATE    what a sync would record, without writing
  *   ?mode=sync&since=DATE       record completed payments (backfill / catch-up)
+ *   ?mode=assign&payment=ID&deal=N  record one completed payment on a given ticket
  */
 export async function GET(req: Request): Promise<NextResponse> {
   if (!authorized(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -68,6 +69,18 @@ export async function GET(req: Request): Promise<NextResponse> {
       })
     }
     return NextResponse.json({ since: since.toISOString(), count: rows.length, payments: rows })
+  }
+
+  if (mode === 'assign') {
+    const paymentId = url.searchParams.get('payment') ?? ''
+    const deal = Number(url.searchParams.get('deal'))
+    if (!paymentId || !Number.isInteger(deal)) return NextResponse.json({ error: 'payment and deal required' }, { status: 400 })
+    const payment = await getSquarePayment(paymentId)
+    if (payment.status !== 'COMPLETED') return NextResponse.json({ error: `payment is ${payment.status}` }, { status: 409 })
+    if (await alreadyRecorded(payment.id)) return NextResponse.json({ result: 'already' })
+    const lead = await db.query.leads.findFirst({ where: eq(leads.dealNumber, deal), columns: { id: true } })
+    if (!lead) return NextResponse.json({ error: `DEAL-${deal} not found` }, { status: 404 })
+    return NextResponse.json(await recordForLead(lead.id, payment))
   }
 
   if (mode === 'sync') {

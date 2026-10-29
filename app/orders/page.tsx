@@ -22,6 +22,17 @@ import {
 import { OrdersFilters } from '@/components/orders/orders-filters'
 import { PageHeader } from '@/components/page-header'
 
+function shortDay(d: Date) {
+  return d.toLocaleDateString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric' })
+}
+
+/** Where the post-sale vouch + referral DM stands for an order. */
+function vouchLabel(o: { vouchDueAt: Date | null; vouchPostedAt: Date | null }): { text: string; tone: string } {
+  if (o.vouchPostedAt) return { text: `Sent ${shortDay(o.vouchPostedAt)}`, tone: 'text-emerald-500' }
+  if (o.vouchDueAt) return { text: `Goes out ${shortDay(o.vouchDueAt)}`, tone: 'text-amber-500' }
+  return { text: '—', tone: 'text-muted-foreground' }
+}
+
 export default async function OrdersPage({
   searchParams,
 }: {
@@ -53,6 +64,7 @@ export default async function OrdersPage({
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead>Date</TableHead>
               <TableHead>Package</TableHead>
               <TableHead>Customer</TableHead>
               <TableHead className="text-right">Price</TableHead>
@@ -60,20 +72,25 @@ export default async function OrdersPage({
               <TableHead>Status</TableHead>
               <TableHead>Delivery</TableHead>
               <TableHead>Warranty</TableHead>
+              <TableHead>Vouch DM</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {rows.length === 0 && (
               <TableRow>
-                <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
                   No orders match these filters.
                 </TableCell>
               </TableRow>
             )}
             {rows.map((o) => {
               const wstate = warrantyState(o.warrantyEnd)
+              const vouch = vouchLabel(o)
               return (
                 <TableRow key={o.id}>
+                  <TableCell className="whitespace-nowrap text-muted-foreground">
+                    {shortDay(o.paidAt ?? o.createdAt)}
+                  </TableCell>
                   <TableCell className="font-medium">
                     <Link href={`/orders/${o.id}`} className="block hover:underline">
                       {o.package}
@@ -89,6 +106,7 @@ export default async function OrdersPage({
                   </TableCell>
                   <TableCell className="text-muted-foreground">{titleCase(o.deliveryStatus)}</TableCell>
                   <TableCell>{wstate === 'none' ? <span className="text-muted-foreground">—</span> : <WarrantyBadge state={wstate} />}</TableCell>
+                  <TableCell className={`whitespace-nowrap text-sm ${vouch.tone}`}>{vouch.text}</TableCell>
                 </TableRow>
               )
             })}
