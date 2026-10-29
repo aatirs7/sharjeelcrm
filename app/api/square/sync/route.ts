@@ -6,6 +6,7 @@ import { leads } from '@/lib/db/schema'
 import { inArray } from 'drizzle-orm'
 import { checkSquareConnection, getSquareCustomer, getSquareOrderReference, getSquarePayment, listSquarePayments } from '@/lib/square'
 import { alreadyRecorded, matchStaticPayment, recordForLead, syncSquarePayments } from '@/lib/square-payments'
+import { postDueVouchRequests } from '@/lib/discord-posts'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -25,6 +26,7 @@ function authorized(req: Request): boolean {
  *   ?mode=preview&since=DATE    what a sync would record, without writing
  *   ?mode=sync&since=DATE       record completed payments (backfill / catch-up)
  *   ?mode=assign&payment=ID&deal=N  record one completed payment on a given ticket
+ *   ?mode=vouch                 send vouch prompts that are due now (same as the daily sweep)
  */
 export async function GET(req: Request): Promise<NextResponse> {
   if (!authorized(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -82,6 +84,8 @@ export async function GET(req: Request): Promise<NextResponse> {
     if (!lead) return NextResponse.json({ error: `DEAL-${deal} not found` }, { status: 404 })
     return NextResponse.json(await recordForLead(lead.id, payment))
   }
+
+  if (mode === 'vouch') return NextResponse.json(await postDueVouchRequests())
 
   if (mode === 'sync') {
     return NextResponse.json(await syncSquarePayments(since, { notifyUnmatched: true }))
