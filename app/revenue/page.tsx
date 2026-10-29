@@ -3,7 +3,7 @@ import { eq, inArray } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { leads, orders } from '@/lib/db/schema'
 import { getFinanceStats } from '@/lib/queries/finance'
-import { listSquarePayments, squareConfigured, type SquarePayment } from '@/lib/square'
+import { getSquareBalance, listSquarePayments, squareConfigured, type SquareBalance, type SquarePayment } from '@/lib/square'
 import {
   formatCents,
   splitRevenue,
@@ -106,9 +106,12 @@ export default async function RevenuePage({
     periodParam === 'week' ? 'week' : periodParam === 'month' ? 'month' : 'all'
   const windowLabel = WINDOW_LABEL[period]
 
-  const [f, square] = await Promise.all([
+  const [f, square, balance] = await Promise.all([
     getFinanceStats(windowStart(period)),
     getSquareActivity(),
+    squareConfigured()
+      ? getSquareBalance().catch((): SquareBalance | null => null)
+      : Promise.resolve<SquareBalance | null>(null),
   ])
   const maxMethod = Math.max(1, ...f.byMethod.map((m) => m.cents))
 
@@ -223,15 +226,45 @@ export default async function RevenuePage({
         </div>
       </section>
 
-      {/* Commission owed: current stock, not tied to the window */}
+      {/* BALANCES: current stocks, not tied to the window */}
       <section className="space-y-3">
-        <SectionLabel>coach commission · right now</SectionLabel>
-        <div className="grid gap-3 sm:grid-cols-2">
+        <SectionLabel>balances · right now</SectionLabel>
+        {!balance && (
+          <Card>
+            <CardContent className="py-4 text-sm text-muted-foreground">
+              The Square balance could not be loaded right now. Refresh to try again.
+            </CardContent>
+          </Card>
+        )}
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {balance && (
+            <>
+              <MetricCard
+                label="In Square"
+                value={formatCents(balance.balanceCents)}
+                sub="after Square fees · not yet sent to bank"
+                accent="admin"
+              />
+              <MetricCard
+                label="On the way to bank"
+                value={formatCents(balance.inTransitCents)}
+                sub={
+                  balance.lastPayout?.arrivalDate
+                    ? `last deposit arrives ${balance.lastPayout.arrivalDate}`
+                    : 'no deposits yet'
+                }
+              />
+              <MetricCard
+                label="Deposited to bank"
+                value={formatCents(balance.depositedCents)}
+                sub="from Square · all-time"
+              />
+            </>
+          )}
           <MetricCard
             label="Commission owed"
             value={formatCents(f.commissionOwedCents)}
             sub={`${formatCents(f.commissionPaidCents)} paid · all-time`}
-            accent="admin"
           />
         </div>
       </section>

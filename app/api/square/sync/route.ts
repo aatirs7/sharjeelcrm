@@ -86,10 +86,7 @@ export async function GET(req: Request): Promise<NextResponse> {
     return NextResponse.json(await recordForLead(lead.id, payment))
   }
 
-  if (mode === 'balance') {
-    const [balance, payments] = await Promise.all([getSquareBalance(), listSquarePayments(new Date('2020-01-01T00:00:00Z'))])
-    return NextResponse.json({ balance, completedPayments: payments.filter((p) => p.status === 'COMPLETED').length, oldest: payments[0]?.created_at ?? null, samplePayment: payments.find((p) => p.status === 'COMPLETED') ? { fees: payments.find((p) => p.status === 'COMPLETED')!.processing_fee ?? null } : null })
-  }
+  if (mode === 'balance') return NextResponse.json(await getSquareBalance())
 
   if (mode === 'vouch') return NextResponse.json(await postDueVouchRequests())
 
