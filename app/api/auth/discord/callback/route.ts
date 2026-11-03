@@ -141,6 +141,7 @@ export async function GET(req: Request): Promise<Response> {
               status: 'active',
             })
             .returning({ id: coaches.id })
+          await notifyOutreach({ name, discord: me.username, promoCode })
           token2 = mintSession('coach', created.id)
           dest = '/coach'
         }
@@ -164,5 +165,26 @@ export async function GET(req: Request): Promise<Response> {
     return res
   } catch {
     return bounce('oauth_error')
+  }
+}
+
+/**
+ * Tell the partner outreach app a new coach joined, so a lead it contacted is
+ * marked PARTNER. Optional (OUTREACH_WEBHOOK_URL + OUTREACH_WEBHOOK_SECRET);
+ * never blocks or fails the signup.
+ */
+async function notifyOutreach(body: { name: string; discord: string; promoCode: string }) {
+  const url = process.env.OUTREACH_WEBHOOK_URL
+  const secret = process.env.OUTREACH_WEBHOOK_SECRET
+  if (!url || !secret) return
+  try {
+    await fetch(url, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${secret}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(3000),
+    })
+  } catch {
+    /* outreach being down must not affect coach signup */
   }
 }
