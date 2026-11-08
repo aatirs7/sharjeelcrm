@@ -4,6 +4,7 @@ import { db } from '@/lib/db'
 import { leads, coaches } from '@/lib/db/schema'
 import { ingestTicketLead } from '@/lib/leads-ingest'
 import { postAdminNotify } from '@/lib/discord-posts'
+import { closeIdleTickets } from '@/lib/ticket-cleanup'
 import {
   listTicketChannels,
   findBuyer,
@@ -125,9 +126,19 @@ async function handle(req: Request): Promise<NextResponse> {
     await db.update(leads).set({ slaAlerted: true }).where(eq(leads.id, l.id))
   }
 
+  // Close idle tickets a few at a time every hour, so the server never fills
+  // up between daily sweeps. Isolated: a failure here never fails the poll.
+  let ticketsClosed = 0
+  try {
+    ticketsClosed = (await closeIdleTickets(20)).deleted
+  } catch (err) {
+    console.error('[poll] idle ticket cleanup failed', err)
+  }
+
   return NextResponse.json({
     ok: true,
     ranAt: new Date().toISOString(),
+    ticketsClosed,
     scanned: channels.length,
     newSinceWatermark: fresh.length,
     leadsCreated: created,

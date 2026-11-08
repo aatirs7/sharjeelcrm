@@ -107,23 +107,38 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
  * mass purge. Keeps the guild under Discord's ~500-channel limit. CRM lead rows
  * are untouched — only the Discord channel is removed.
  */
+/**
+ * Close (delete) ticket channels nobody has written in for `idleDays`, so the
+ * server stays under Discord's 500-channel cap and Ticket Tool can always open
+ * new tickets. "Activity" is the channel's last message, or its creation if it
+ * has none. Channels in `keep` (paid deals still being delivered) are never
+ * touched. Oldest activity goes first; capped per run.
+ */
 export async function deleteStaleTicketChannels(
   guildId: string,
-  olderThanDays: number,
-  cap = 30
-): Promise<{ eligible: number; deleted: number }> {
+  idleDays: number,
+  cap = 30,
+  keep: Set<string> = new Set()
+): Promise<{ eligible: number; deleted: number; total: number }> {
   const chans = await dget<DiscordChannel[]>(`/guilds/${guildId}/channels`)
-  const cutoff = Date.now() - olderThanDays * 86_400_000
+  const cutoff = Date.now() - idleDays * 86_400_000
+  const lastActive = (c: DiscordChannel) => snowflakeMs(c.last_message_id || c.id)
   const stale = chans
-    .filter((c) => c.type === 0 && /^(ticket-|closed-)/i.test(c.name) && snowflakeMs(c.id) < cutoff)
-    .sort((a, b) => (BigInt(a.id) < BigInt(b.id) ? -1 : 1)) // oldest first
+    .filter(
+      (c) =>
+        c.type === 0 &&
+        /^(ticket-|closed-)/i.test(c.name) &&
+        !keep.has(c.id) &&
+        lastActive(c) < cutoff
+    )
+    .sort((a, b) => lastActive(a) - lastActive(b)) // longest idle first
   let deleted = 0
   for (const c of stale.slice(0, cap)) {
     const res = await ddelete(`/channels/${c.id}`)
     if (res.ok) deleted++
     await sleep(300) // stay within channel-delete rate limits
   }
-  return { eligible: stale.length, deleted }
+  return { eligible: stale.length, deleted, total: chans.length }
 }
 
 export interface DiscordRole {
@@ -201,6 +216,7 @@ export interface DiscordChannel {
   name: string
   type: number
   parent_id: string | null
+  last_message_id?: string | null
   permission_overwrites?: { id: string; type: number }[]
 }
 
