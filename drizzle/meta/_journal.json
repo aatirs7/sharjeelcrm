@@ -134,6 +134,13 @@
       "when": 1790618614372,
       "tag": "0018_post_deal_vouch",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1794587875648,
+      "tag": "0019_blitz_checkout",
+      "breakpoints": true
     }
   ]
 }

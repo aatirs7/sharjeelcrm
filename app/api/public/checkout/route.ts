@@ -4,6 +4,7 @@ import { db } from '@/lib/db'
 import { products, leads, coaches } from '@/lib/db/schema'
 import { cardLinkFor, getSetting } from '@/lib/settings'
 import { createSquarePaymentLink, squareConfigured } from '@/lib/square'
+import { blitzEnabled, createBlitzCheckout } from '@/lib/blitz'
 import { postAdminNotify } from '@/lib/discord-posts'
 import { formatCents } from '@/lib/money'
 
@@ -111,7 +112,20 @@ export async function POST(req: Request): Promise<NextResponse> {
   // amount is the fallback if Square errors.
   let url: string | null = null
   let automatic = false
-  if (squareConfigured() && price >= 100) {
+  const useBlitz = blitzEnabled()
+  const processor = useBlitz ? 'Blitz' : 'Square'
+  if (useBlitz && price >= 100) {
+    // The buyer returns to the storefront; the CRM confirms the payment with
+    // Blitz's status check (webhook + hourly sweep), never from the redirect.
+    try {
+      const bz = await createBlitzCheckout({ leadId: lead.id, amountCents: price, returnUrl })
+      await db.update(leads).set({ blitzOrderId: bz.orderId, blitzAmountCents: price }).where(eq(leads.id, lead.id))
+      url = bz.url
+      automatic = true
+    } catch (e) {
+      console.error('[public checkout] blitz checkout failed:', e)
+    }
+  } else if (squareConfigured() && price >= 100) {
     try {
       const sq = await createSquarePaymentLink({
         leadId: lead.id,
@@ -127,13 +141,13 @@ export async function POST(req: Request): Promise<NextResponse> {
       console.error('[public checkout] square link failed:', e)
     }
   }
-  if (!url) url = (await cardLinkFor(price))?.url ?? null
+  if (!url && !useBlitz) url = (await cardLinkFor(price))?.url ?? null
 
   const who = [`Deal: DEAL-${lead.dealNumber}`, `Customer: ${label}`, `Email: ${cleanEmail}`, `Product: ${product.name} (${formatCents(price)})`]
   if (!url) {
     await postAdminNotify(
       '🌐 Website card checkout failed',
-      [...who, `Square checkout is unavailable and no payment link is saved for ${formatCents(price)}. Email the buyer a link.`],
+      [...who, `${processor} checkout is unavailable and no payment link is saved for ${formatCents(price)}. Email the buyer a link.`],
       0xf59e0b,
     )
     return NextResponse.json(
@@ -147,7 +161,7 @@ export async function POST(req: Request): Promise<NextResponse> {
     [
       ...who,
       automatic
-        ? 'Sent to a Square checkout. The sale records itself in the CRM when they pay.'
+        ? `Sent to a ${processor} checkout. The sale records itself in the CRM when they pay.`
         : 'Sent to a shared payment link (Square checkout was unavailable). Check Square for the payment.',
     ],
     0x3b82f6,

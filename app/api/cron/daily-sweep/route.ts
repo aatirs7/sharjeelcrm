@@ -6,6 +6,7 @@ import { flagExpiringWarranties } from '@/lib/automations'
 import { sweepCommissions, assignMonthlyTiers, finalizePreviousMonth } from '@/lib/commissions'
 import { postWeeklyLeaderboard, postDailyReport, postDueVouchRequests } from '@/lib/discord-posts'
 import { closeIdleTickets } from '@/lib/ticket-cleanup'
+import { sweepBlitzCheckouts } from '@/lib/blitz-payments'
 import { scanFraud } from '@/lib/fraud'
 import { assignAchievements } from '@/lib/achievements'
 import { syncStripeOrders } from '@/lib/stripe-sync'
@@ -64,6 +65,14 @@ async function handle(req: Request): Promise<NextResponse> {
   // under Discord's 500-channel cap. The hourly poll does this too.
   const ticketCleanup = await closeIdleTickets(30)
 
+  // Blitz card payments the return link and webhook both missed.
+  let blitz = { checked: 0, recorded: 0, mismatched: 0, errors: 0 }
+  try {
+    blitz = await sweepBlitzCheckouts(30, 200)
+  } catch (err) {
+    console.error('[daily-sweep] blitz sweep failed', err)
+  }
+
   // Send the delayed post-sale review + referral prompt for deals that have come
   // due. Isolated so a Discord failure never aborts the rest of the sweep.
   let vouchRequests = { posted: 0, eligible: 0 }
@@ -104,6 +113,7 @@ async function handle(req: Request): Promise<NextResponse> {
     dailyReportPosted,
     ticketChannelsEligible: ticketCleanup.eligible,
     ticketChannelsDeleted: ticketCleanup.deleted,
+    blitz,
     vouchRequestsEligible: vouchRequests.eligible,
     vouchRequestsPosted: vouchRequests.posted,
   })
