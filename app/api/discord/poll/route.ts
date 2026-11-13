@@ -5,6 +5,7 @@ import { leads, coaches } from '@/lib/db/schema'
 import { ingestTicketLead } from '@/lib/leads-ingest'
 import { postAdminNotify } from '@/lib/discord-posts'
 import { closeIdleTickets } from '@/lib/ticket-cleanup'
+import { sweepBlitzCheckouts } from '@/lib/blitz-payments'
 import {
   listTicketChannels,
   findBuyer,
@@ -135,10 +136,20 @@ async function handle(req: Request): Promise<NextResponse> {
     console.error('[poll] idle ticket cleanup failed', err)
   }
 
+  // Backstop for Blitz card payments: confirm any open Blitz checkout that got
+  // paid but whose buyer never came back through the return link.
+  let blitzRecorded = 0
+  try {
+    blitzRecorded = (await sweepBlitzCheckouts()).recorded
+  } catch (err) {
+    console.error('[poll] blitz sweep failed', err)
+  }
+
   return NextResponse.json({
     ok: true,
     ranAt: new Date().toISOString(),
     ticketsClosed,
+    blitzRecorded,
     scanned: channels.length,
     newSinceWatermark: fresh.length,
     leadsCreated: created,

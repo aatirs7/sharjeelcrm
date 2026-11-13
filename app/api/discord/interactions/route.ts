@@ -12,6 +12,8 @@ import { formatCents } from '@/lib/money'
 import { cardLinkFor, getSetting } from '@/lib/settings'
 import { effectivePrice } from '@/lib/pricing'
 import { createSquarePaymentLink, squareConfigured } from '@/lib/square'
+import { blitzEnabled, createBlitzCheckout } from '@/lib/blitz'
+import { crmBaseUrl } from '@/lib/app-url'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -336,7 +338,28 @@ export async function POST(req: Request): Promise<NextResponse> {
           lead.ticketLink ?? (guildId ? `https://discord.com/channels/${guildId}/${channelId}` : undefined)
         let url: string | null = null
         let automatic = false
-        if (squareConfigured() && price >= 100) {
+        const useBlitz = blitzEnabled()
+        const processor = useBlitz ? 'Blitz' : 'Square'
+        if (useBlitz && price >= 100) {
+          // Blitz is the card processor: one checkout per ticket, stored on the
+          // lead so only this order at this amount can mark the ticket paid.
+          try {
+            const bz = await createBlitzCheckout({
+              leadId: lead.id,
+              amountCents: price,
+              returnUrl: `${crmBaseUrl()}/api/blitz/return/${lead.id}`,
+            })
+            await db.update(leads).set({ blitzOrderId: bz.orderId, blitzAmountCents: price }).where(eq(leads.id, lead.id))
+            url = bz.url
+            automatic = true
+          } catch (e) {
+            await postAdminNotify(
+              '⚠️ Blitz checkout failed',
+              [dealLine, customerLine, productLine, `Error: ${e instanceof Error ? e.message : 'unknown'}`],
+              0xf59e0b
+            )
+          }
+        } else if (squareConfigured() && price >= 100) {
           try {
             const sq = await createSquarePaymentLink({
               leadId: lead.id,
@@ -356,7 +379,8 @@ export async function POST(req: Request): Promise<NextResponse> {
             )
           }
         }
-        if (!url) {
+        // Saved links are Square links, so they are only a fallback while Square is the processor.
+        if (!url && !useBlitz) {
           const saved = await cardLinkFor(price)
           if (saved) url = saved.url
         }
@@ -388,7 +412,7 @@ export async function POST(req: Request): Promise<NextResponse> {
               customerLine,
               productLine,
               automatic
-                ? `Square checkout for ${formatCents(price)} posted. The ticket marks itself paid when the buyer pays.`
+                ? `${processor} checkout for ${formatCents(price)} posted. The ticket marks itself paid when the buyer pays.`
                 : `Shared payment link for ${formatCents(price)} posted (Square checkout was unavailable). Check Square for the payment.`,
             ],
             0x3b82f6
@@ -411,7 +435,7 @@ export async function POST(req: Request): Promise<NextResponse> {
         })
         await postAdminNotify(
           '💳 Buyer chose card, send a link',
-          [dealLine, customerLine, productLine, `Square checkout is unavailable and no payment link is saved for ${formatCents(price)}. Send the buyer a link by hand.`],
+          [dealLine, customerLine, productLine, `${processor} checkout is unavailable and no payment link is saved for ${formatCents(price)}. Send the buyer a link by hand.`],
           0xf59e0b
         )
         return NextResponse.json({ type: 4, data: { content: 'Noted, a team member will send your card payment link shortly.', flags: EPHEMERAL } })

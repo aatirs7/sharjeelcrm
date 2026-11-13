@@ -264,6 +264,11 @@ export const leads = pgTable('leads', {
   paymentLink: text('payment_link'), // Stripe checkout url when card was chosen
   paymentRef: text('payment_ref'), // Stripe payment intent / charge id, or crypto tx hash
   stripeSessionId: text('stripe_session_id'), // checkout session, matched by the webhook
+  // Blitz card checkout for this ticket: its order id and the exact amount we
+  // asked for. A payment only counts when Blitz reports this order PAID for
+  // exactly this amount (see lib/blitz-payments.ts).
+  blitzOrderId: text('blitz_order_id'),
+  blitzAmountCents: integer('blitz_amount_cents'),
   firstResponseAt: timestamp('first_response_at', { withTimezone: true }), // SLA tracking §36
   slaAlerted: boolean('sla_alerted').notNull().default(false),
   status: leadStatus('status').notNull().default('new_lead'),
