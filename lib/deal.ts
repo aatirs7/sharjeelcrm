@@ -6,6 +6,7 @@ import { syncOrderCommission } from './commissions'
 import { createDeliveryTaskForOrder, recomputeOrderRollups } from './automations'
 import { logAudit } from './audit'
 import { postAdminNotify } from './discord-posts'
+import { crmBaseUrl } from './app-url'
 import { getUserAvatarUrl } from './discord'
 
 type PaymentMethodValue = (typeof paymentMethodEnum.enumValues)[number]
@@ -139,6 +140,14 @@ export async function createOrderForLead(
       `Product: ${input.packageName.trim()}`,
       `Amount: ${formatCents(priceCents)}`,
       coach ? `Referrer: ${coach.name} (${formatCents(commissionCents)} commission)` : 'Referrer: none',
+      // Website buyers have no Discord ticket: say so, and where to deliver.
+      ...(lead.discordChannelId
+        ? []
+        : [
+            'Bought on the website, so there is no Discord ticket.',
+            `Deliver by email to: ${lead.email ?? lead.discordUsername}`,
+            `Deal page: ${crmBaseUrl()}/tickets/${lead.id}`,
+          ]),
     ],
     0x22c55e
   )
