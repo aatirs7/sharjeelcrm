@@ -7,6 +7,8 @@ import { MetricCard } from '@/components/dashboard/metric-card'
 import { PeriodToggle } from '@/components/dashboard/period-toggle'
 import { TaskInbox } from '@/components/tasks/task-inbox'
 import { PageHeader, SectionLabel } from '@/components/page-header'
+import { BlitzBalance } from '@/components/dashboard/blitz-balance'
+import { getBlitzTotals } from '@/lib/queries/blitz'
 
 export default async function DashboardPage({
   searchParams,
@@ -18,7 +20,11 @@ export default async function DashboardPage({
 
   const rep = await getCurrentRep()
   const isAdmin = rep?.role === 'admin' || rep?.role === 'owner'
-  const [m, today] = await Promise.all([getDashboardMetrics(period), getTodaySnapshot()])
+  const [m, today, blitz] = await Promise.all([
+    getDashboardMetrics(period),
+    getTodaySnapshot(),
+    getBlitzTotals().catch(() => null),
+  ])
 
   // CRM orders are the source of truth for money: past Stripe charges were
   // synced into orders, and card-link (Square) and crypto sales are recorded
@@ -52,6 +58,8 @@ export default async function DashboardPage({
           <MetricCard label="Follow-ups due" value={today.followUpsDue} sub={today.followUpsDue ? 'today' : 'all clear'} />
         </div>
       </div>
+
+      {blitz && <BlitzBalance t={blitz} />}
 
       {/* Revenue / sales */}
       <div className="space-y-3">

@@ -3,6 +3,7 @@ import { eq, inArray } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { leads, orders } from '@/lib/db/schema'
 import { getFinanceStats } from '@/lib/queries/finance'
+import { getBlitzTotals } from '@/lib/queries/blitz'
 import { getSquareBalance, listSquarePayments, squareConfigured, type SquareBalance, type SquarePayment } from '@/lib/square'
 import {
   formatCents,
@@ -106,6 +107,7 @@ export default async function RevenuePage({
     periodParam === 'week' ? 'week' : periodParam === 'month' ? 'month' : 'all'
   const windowLabel = WINDOW_LABEL[period]
 
+  const blitzPromise = getBlitzTotals().catch(() => null)
   const [f, square, balance] = await Promise.all([
     getFinanceStats(windowStart(period)),
     getSquareActivity(),
@@ -113,6 +115,7 @@ export default async function RevenuePage({
       ? getSquareBalance().catch((): SquareBalance | null => null)
       : Promise.resolve<SquareBalance | null>(null),
   ])
+  const blitz = await blitzPromise
   const maxMethod = Math.max(1, ...f.byMethod.map((m) => m.cents))
 
   // Headline money comes from CRM orders. Every past Stripe charge was synced
@@ -260,6 +263,14 @@ export default async function RevenuePage({
                 sub="from Square · all-time"
               />
             </>
+          )}
+          {blitz && (
+            <MetricCard
+              label="Collected through Blitz"
+              value={formatCents(blitz.collectedCents)}
+              sub={`${blitz.sales} card sales · before Blitz fees`}
+              accent="admin"
+            />
           )}
           <MetricCard
             label="Commission owed"
