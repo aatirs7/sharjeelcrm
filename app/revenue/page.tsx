@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { eq, inArray } from 'drizzle-orm'
+import { and, eq, gte, inArray } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { leads, orders } from '@/lib/db/schema'
 import { getFinanceStats } from '@/lib/queries/finance'
@@ -97,6 +97,48 @@ async function getSquareActivity(): Promise<
   }
 }
 
+interface CardRow {
+  key: string
+  via: 'Square' | 'Blitz'
+  buyer: string
+  email: string | null
+  at: string
+  ticket: { id: string; deal: number; user: string | null } | null
+  amountCents: number
+  refunded: boolean
+}
+
+/** Card sales confirmed through Blitz in the last 14 days, from CRM orders
+ *  (Blitz has no list endpoint; each order's transactionId is its Blitz order). */
+async function getBlitzActivity(): Promise<CardRow[]> {
+  const since = new Date(Date.now() - 14 * 86400_000)
+  const rows = await db
+    .select({
+      tx: orders.transactionId,
+      price: orders.priceCents,
+      status: orders.status,
+      paidAt: orders.paidAt,
+      createdAt: orders.createdAt,
+      id: leads.id,
+      deal: leads.dealNumber,
+      user: leads.discordUsername,
+      email: leads.email,
+    })
+    .from(orders)
+    .innerJoin(leads, and(eq(leads.id, orders.leadId), eq(orders.transactionId, leads.blitzOrderId)))
+    .where(gte(orders.createdAt, since))
+  return rows.map((r) => ({
+    key: `blitz-${r.tx}`,
+    via: 'Blitz' as const,
+    buyer: r.email ?? r.user ?? `DEAL-${r.deal}`,
+    email: r.email,
+    at: new Date(r.paidAt ?? r.createdAt).toISOString(),
+    ticket: { id: r.id, deal: r.deal, user: r.user },
+    amountCents: r.price,
+    refunded: r.status === 'refunded' || r.status === 'chargeback',
+  }))
+}
+
 export default async function RevenuePage({
   searchParams,
 }: {
@@ -108,6 +150,7 @@ export default async function RevenuePage({
   const windowLabel = WINDOW_LABEL[period]
 
   const blitzPromise = getBlitzTotals().catch(() => null)
+  const blitzActivityPromise = getBlitzActivity().catch((): CardRow[] => [])
   const [f, square, balance] = await Promise.all([
     getFinanceStats(windowStart(period)),
     getSquareActivity(),
@@ -116,6 +159,24 @@ export default async function RevenuePage({
       : Promise.resolve<SquareBalance | null>(null),
   ])
   const blitz = await blitzPromise
+  // One card feed: Square (its own API) + Blitz (CRM orders), newest first.
+  const cardRows: CardRow[] = [
+    ...(square.ok
+      ? square.payments.map((p) => ({
+          key: `square-${p.id}`,
+          via: 'Square' as const,
+          buyer: p.card_details?.card?.cardholder_name ?? p.buyer_email_address ?? p.id.slice(0, 14),
+          email: p.buyer_email_address ?? null,
+          at: p.created_at,
+          ticket: p.ticket,
+          amountCents: p.amount_money.amount,
+          refunded: (p.refunded_money?.amount ?? 0) > 0,
+        }))
+      : []),
+    ...(await blitzActivityPromise),
+  ]
+    .sort((a, b) => b.at.localeCompare(a.at))
+    .slice(0, 40)
   const maxMethod = Math.max(1, ...f.byMethod.map((m) => m.cents))
 
   // Headline money comes from CRM orders. Every past Stripe charge was synced
@@ -348,62 +409,55 @@ export default async function RevenuePage({
         </div>
       </section>
 
-      {/* Square activity (latest, not windowed) */}
+      {/* Card activity (latest, not windowed): Square + Blitz */}
       <section className="space-y-3">
-        <SectionLabel>card payments · square · last 14 days</SectionLabel>
-        {!square.ok ? (
-          <Card>
-            <CardContent className="py-4 text-sm text-rose-500">{square.error}</CardContent>
-          </Card>
-        ) : (
-          <div className="overflow-hidden rounded-xl border bg-card">
-            <Table>
-              <TableHeader>
+        <SectionLabel>card payments · last 14 days</SectionLabel>
+        <div className="overflow-hidden rounded-xl border bg-card">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Buyer</TableHead>
+                <TableHead>Ticket</TableHead>
+                <TableHead>Via</TableHead>
+                <TableHead className="text-right">Amount</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {cardRows.length === 0 && (
                 <TableRow>
-                  <TableHead>Buyer</TableHead>
-                  <TableHead>Ticket</TableHead>
-                  <TableHead className="text-right">Amount</TableHead>
+                  <TableCell colSpan={4} className="py-6 text-center text-muted-foreground">
+                    No card payments in the last 14 days.
+                  </TableCell>
                 </TableRow>
-              </TableHeader>
-              <TableBody>
-                {square.payments.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={3} className="py-6 text-center text-muted-foreground">
-                      No card payments in the last 14 days.
-                    </TableCell>
-                  </TableRow>
-                )}
-                {square.payments.map((p) => {
-                  const refunded = (p.refunded_money?.amount ?? 0) > 0
-                  return (
-                    <TableRow key={p.id}>
-                      <TableCell className="text-sm">
-                        {p.card_details?.card?.cardholder_name ?? p.buyer_email_address ?? p.id.slice(0, 14)}
-                        <div className="text-xs text-muted-foreground">
-                          {p.buyer_email_address ? `${p.buyer_email_address} · ` : ''}
-                          {fmtWhen(p.created_at)}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-sm">
-                        {p.ticket ? (
-                          <Link href={`/tickets/${p.ticket.id}`} className="font-mono text-xs text-primary hover:underline">
-                            DEAL-{p.ticket.deal}
-                            {p.ticket.user ? ` · @${p.ticket.user}` : ''}
-                          </Link>
-                        ) : (
-                          <span className="text-xs text-amber-500">not linked to a ticket yet</span>
-                        )}
-                      </TableCell>
-                      <TableCell className={cn('text-right tabular-nums', refunded && 'text-muted-foreground line-through')}>
-                        {formatCents(p.amount_money.amount)}
-                      </TableCell>
-                    </TableRow>
-                  )
-                })}
-              </TableBody>
-            </Table>
-          </div>
-        )}
+              )}
+              {cardRows.map((p) => (
+                <TableRow key={p.key}>
+                  <TableCell className="text-sm">
+                    {p.buyer}
+                    <div className="text-xs text-muted-foreground">
+                      {p.email && p.email !== p.buyer ? `${p.email} · ` : ''}
+                      {fmtWhen(p.at)}
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-sm">
+                    {p.ticket ? (
+                      <Link href={`/tickets/${p.ticket.id}`} className="font-mono text-xs text-primary hover:underline">
+                        DEAL-{p.ticket.deal}
+                        {p.ticket.user && p.ticket.user !== p.buyer ? ` · @${p.ticket.user}` : ''}
+                      </Link>
+                    ) : (
+                      <span className="text-xs text-amber-500">not linked to a ticket yet</span>
+                    )}
+                  </TableCell>
+                  <TableCell className="font-mono text-xs text-muted-foreground">{p.via}</TableCell>
+                  <TableCell className={cn('text-right tabular-nums', p.refunded && 'text-muted-foreground line-through')}>
+                    {formatCents(p.amountCents)}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
       </section>
     </div>
   )
