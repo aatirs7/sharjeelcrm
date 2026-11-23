@@ -141,6 +141,13 @@
       "when": 1794587875648,
       "tag": "0019_blitz_checkout",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1795418937932,
+      "tag": "0020_blitz_ledger_transcripts",
+      "breakpoints": true
     }
   ]
 }

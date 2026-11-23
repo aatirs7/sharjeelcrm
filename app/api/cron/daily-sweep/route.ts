@@ -63,7 +63,7 @@ async function handle(req: Request): Promise<NextResponse> {
 
   // Close tickets idle for TICKET_IDLE_DAYS (default 3) so the server stays
   // under Discord's 500-channel cap. The hourly poll does this too.
-  const ticketCleanup = await closeIdleTickets(30)
+  const ticketCleanup = await closeIdleTickets(15)
 
   // Blitz card payments the return link and webhook both missed.
   let blitz = { checked: 0, recorded: 0, mismatched: 0, errors: 0 }

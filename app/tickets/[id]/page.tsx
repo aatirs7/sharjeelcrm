@@ -1,8 +1,11 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { desc, eq } from 'drizzle-orm'
+import { desc, eq, or } from 'drizzle-orm'
 import { db } from '@/lib/db'
-import { leads, orders, coaches, auditLogs } from '@/lib/db/schema'
+import { leads, orders, coaches, auditLogs, ticketTranscripts } from '@/lib/db/schema'
+import { isAdmin as sessionIsAdmin } from '@/lib/auth'
+import type { SavedMessage } from '@/lib/ticket-cleanup'
+import { TicketTranscripts, type TranscriptView } from '@/components/leads/ticket-transcripts'
 import { formatCents } from '@/lib/money'
 import { titleCase, paymentMethodLabel } from '@/lib/labels'
 import { LeadStatusBadge, OrderStatusBadge } from '@/components/status-badge'
@@ -44,6 +47,33 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
   ])
 
   const isWon = lead.status === 'completed'
+
+  // Saved chats from closed tickets (this deal's and the same buyer's others).
+  // Admin only: a chat can contain the login that was delivered.
+  const admin = await sessionIsAdmin()
+  const transcripts: TranscriptView[] = admin
+    ? (
+        await db
+          .select({
+            id: ticketTranscripts.id,
+            channelName: ticketTranscripts.channelName,
+            leadId: ticketTranscripts.leadId,
+            dealNumber: leads.dealNumber,
+            messages: ticketTranscripts.messages,
+            messageCount: ticketTranscripts.messageCount,
+            closedAt: ticketTranscripts.closedAt,
+          })
+          .from(ticketTranscripts)
+          .leftJoin(leads, eq(leads.id, ticketTranscripts.leadId))
+          .where(
+            lead.discordUserId
+              ? or(eq(ticketTranscripts.leadId, id), eq(ticketTranscripts.buyerDiscordId, lead.discordUserId))
+              : eq(ticketTranscripts.leadId, id)
+          )
+          .orderBy(desc(ticketTranscripts.closedAt))
+          .limit(20)
+      ).map((t) => ({ ...t, messages: (t.messages as SavedMessage[]) ?? [] }))
+    : []
 
   return (
     <div className="space-y-6">
@@ -263,6 +293,8 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
           </Card>
         </div>
       </div>
+
+      {transcripts.length > 0 && <TicketTranscripts items={transcripts} currentLeadId={lead.id} />}
     </div>
   )
 }

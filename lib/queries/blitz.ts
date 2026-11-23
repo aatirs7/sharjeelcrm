@@ -1,6 +1,7 @@
-import { and, eq, isNotNull } from 'drizzle-orm'
+import { and, desc, eq, isNotNull } from 'drizzle-orm'
 import { db } from '../db'
-import { leads, orders } from '../db/schema'
+import { blitzLedger, leads, orders } from '../db/schema'
+import { getSetting } from '../settings'
 
 /**
  * Money taken through Blitz, from the CRM's own records. Blitz's API has no
@@ -66,4 +67,82 @@ export async function getBlitzTotals(): Promise<BlitzTotals> {
     if (!out.lastSaleAt || at > out.lastSaleAt) out.lastSaleAt = at
   }
   return out
+}
+
+export interface BlitzLedgerEntry {
+  id: string
+  kind: 'withdrawal' | 'balance_check'
+  amountCents: number
+  occurredAt: Date
+  note: string | null
+}
+
+/**
+ * Running Blitz balance. Blitz can't be asked for its balance, so the CRM
+ * keeps one: start from the last balance check an admin entered (what Blitz
+ * showed at that moment, or zero if none), add every confirmed Blitz sale
+ * since then minus the fee setting, and take off every withdrawal recorded
+ * since then. A balance check resets the drift (fees, anything unrecorded).
+ */
+export interface BlitzBalance {
+  balanceCents: number
+  estimated: boolean // true when fees are guessed or nothing was ever checked
+  feeBps: number
+  salesSinceCheckCents: number
+  feesSinceCheckCents: number
+  withdrawnSinceCheckCents: number
+  withdrawnTotalCents: number
+  lastCheck: BlitzLedgerEntry | null
+  lastWithdrawal: BlitzLedgerEntry | null
+  recent: BlitzLedgerEntry[]
+}
+
+export function feeFor(cents: number, bps: number): number {
+  return Math.round((cents * bps) / 10_000)
+}
+
+export async function getBlitzBalance(): Promise<BlitzBalance> {
+  const [ledger, sales, feeBps] = await Promise.all([
+    db.select().from(blitzLedger).orderBy(desc(blitzLedger.occurredAt), desc(blitzLedger.createdAt)),
+    db
+      .select({ priceCents: orders.priceCents, status: orders.status, paidAt: orders.paidAt, createdAt: orders.createdAt })
+      .from(orders)
+      .innerJoin(leads, and(eq(orders.leadId, leads.id), eq(orders.transactionId, leads.blitzOrderId))),
+    getSetting('blitzFeeBps'),
+  ])
+  const entries: BlitzLedgerEntry[] = ledger.map((r) => ({
+    id: r.id,
+    kind: r.kind === 'balance_check' ? 'balance_check' : 'withdrawal',
+    amountCents: r.amountCents,
+    occurredAt: r.occurredAt,
+    note: r.note,
+  }))
+  const lastCheck = entries.find((e) => e.kind === 'balance_check') ?? null
+  const after = lastCheck ? lastCheck.occurredAt.getTime() : -Infinity
+
+  let salesSince = 0
+  let feesSince = 0
+  for (const s of sales) {
+    if (s.status === 'refunded' || s.status === 'chargeback') continue
+    if (new Date(s.paidAt ?? s.createdAt).getTime() <= after) continue
+    salesSince += s.priceCents
+    feesSince += feeFor(s.priceCents, feeBps)
+  }
+  const withdrawals = entries.filter((e) => e.kind === 'withdrawal')
+  const withdrawnSince = withdrawals
+    .filter((w) => w.occurredAt.getTime() > after)
+    .reduce((sum, w) => sum + w.amountCents, 0)
+
+  return {
+    balanceCents: (lastCheck?.amountCents ?? 0) + salesSince - feesSince - withdrawnSince,
+    estimated: !lastCheck || (salesSince > 0 && feeBps === 0),
+    feeBps,
+    salesSinceCheckCents: salesSince,
+    feesSinceCheckCents: feesSince,
+    withdrawnSinceCheckCents: withdrawnSince,
+    withdrawnTotalCents: withdrawals.reduce((sum, w) => sum + w.amountCents, 0),
+    lastCheck,
+    lastWithdrawal: withdrawals[0] ?? null,
+    recent: entries.slice(0, 12),
+  }
 }

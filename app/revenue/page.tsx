@@ -3,7 +3,7 @@ import { and, eq, gte, inArray } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { leads, orders } from '@/lib/db/schema'
 import { getFinanceStats } from '@/lib/queries/finance'
-import { getBlitzTotals } from '@/lib/queries/blitz'
+import { getBlitzBalance, getBlitzTotals } from '@/lib/queries/blitz'
 import { getSquareBalance, listSquarePayments, squareConfigured, type SquareBalance, type SquarePayment } from '@/lib/square'
 import {
   formatCents,
@@ -150,6 +150,7 @@ export default async function RevenuePage({
   const windowLabel = WINDOW_LABEL[period]
 
   const blitzPromise = getBlitzTotals().catch(() => null)
+  const blitzBalancePromise = getBlitzBalance().catch(() => null)
   const blitzActivityPromise = getBlitzActivity().catch((): CardRow[] => [])
   const [f, square, balance] = await Promise.all([
     getFinanceStats(windowStart(period)),
@@ -159,6 +160,7 @@ export default async function RevenuePage({
       : Promise.resolve<SquareBalance | null>(null),
   ])
   const blitz = await blitzPromise
+  const blitzBalance = await blitzBalancePromise
   // One card feed: Square (its own API) + Blitz (CRM orders), newest first.
   const cardRows: CardRow[] = [
     ...(square.ok
@@ -325,12 +327,19 @@ export default async function RevenuePage({
               />
             </>
           )}
+          {blitzBalance && (
+            <MetricCard
+              label={blitzBalance.estimated ? 'Blitz balance (est.)' : 'Blitz balance'}
+              value={formatCents(blitzBalance.balanceCents)}
+              sub={`${formatCents(blitzBalance.withdrawnTotalCents)} withdrawn · manage on the dashboard`}
+              accent="admin"
+            />
+          )}
           {blitz && (
             <MetricCard
               label="Collected through Blitz"
               value={formatCents(blitz.collectedCents)}
-              sub={`${blitz.sales} card sales · before Blitz fees`}
-              accent="admin"
+              sub={`${blitz.sales} card sales · all-time`}
             />
           )}
           <MetricCard

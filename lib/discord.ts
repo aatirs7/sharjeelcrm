@@ -114,12 +114,41 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
  * has none. Channels in `keep` (paid deals still being delivered) are never
  * touched. Oldest activity goes first; capped per run.
  */
+export interface TicketMessage {
+  id: string
+  content: string
+  timestamp: string
+  author: { id: string; username: string; global_name?: string | null; bot?: boolean }
+  attachments?: { filename: string }[]
+  embeds?: { title?: string; description?: string }[]
+}
+
+/** Every message in a channel, oldest first (paged 100 at a time, up to max). */
+export async function fetchAllMessages(channelId: string, max = 1500): Promise<TicketMessage[]> {
+  const out: TicketMessage[] = []
+  let before: string | null = null
+  while (out.length < max) {
+    const page: TicketMessage[] = await dget<TicketMessage[]>(
+      `/channels/${channelId}/messages?limit=100${before ? `&before=${before}` : ''}`
+    )
+    if (!page.length) break
+    out.push(...page)
+    if (page.length < 100) break
+    before = page[page.length - 1].id
+    await sleep(250)
+  }
+  return out.reverse()
+}
+
 export async function deleteStaleTicketChannels(
   guildId: string,
   idleDays: number,
   cap = 30,
-  keep: Set<string> = new Set()
-): Promise<{ eligible: number; deleted: number; total: number }> {
+  keep: Set<string> = new Set(),
+  // Runs right before each delete; the channel is only deleted when it
+  // resolves true (used to save the chat first). A throw also skips it.
+  beforeDelete?: (c: DiscordChannel) => Promise<boolean>
+): Promise<{ eligible: number; deleted: number; total: number; skipped: number }> {
   const chans = await dget<DiscordChannel[]>(`/guilds/${guildId}/channels`)
   const cutoff = Date.now() - idleDays * 86_400_000
   const lastActive = (c: DiscordChannel) => snowflakeMs(c.last_message_id || c.id)
@@ -133,12 +162,25 @@ export async function deleteStaleTicketChannels(
     )
     .sort((a, b) => lastActive(a) - lastActive(b)) // longest idle first
   let deleted = 0
+  let skipped = 0
   for (const c of stale.slice(0, cap)) {
+    if (beforeDelete) {
+      let ok = false
+      try {
+        ok = await beforeDelete(c)
+      } catch (err) {
+        console.error('[tickets] could not save chat, keeping channel', c.id, err)
+      }
+      if (!ok) {
+        skipped++
+        continue
+      }
+    }
     const res = await ddelete(`/channels/${c.id}`)
     if (res.ok) deleted++
     await sleep(300) // stay within channel-delete rate limits
   }
-  return { eligible: stale.length, deleted, total: chans.length }
+  return { eligible: stale.length, deleted, total: chans.length, skipped }
 }
 
 export interface DiscordRole {

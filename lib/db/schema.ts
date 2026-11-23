@@ -656,3 +656,38 @@ export type NewProduct = typeof products.$inferInsert
 export type InventoryItem = typeof inventoryItems.$inferSelect
 export type PayoutRequest = typeof payoutRequests.$inferSelect
 export type FraudFlag = typeof fraudFlags.$inferSelect
+
+// ---------------------------------------------------------------------------
+// blitz_ledger — what the CRM can't read from Blitz: bank withdrawals and
+// balance checks (the balance staff saw in Blitz at a moment). The Blitz API
+// has no balance or withdrawal endpoint, so these are entered by an admin and
+// the CRM keeps a running balance from them plus confirmed Blitz sales.
+// ---------------------------------------------------------------------------
+
+export const blitzLedger = pgTable('blitz_ledger', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  kind: text('kind').notNull(), // withdrawal | balance_check
+  amountCents: integer('amount_cents').notNull(),
+  occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull(),
+  note: text('note'),
+  createdBy: text('created_by'),
+  createdAt: createdAt(),
+})
+
+// ---------------------------------------------------------------------------
+// ticket_transcripts — a copy of a Discord ticket's chat, saved right before
+// the idle-ticket cleanup deletes the channel, so delivered logins and the
+// conversation survive. Admin-only: these can contain account credentials.
+// ---------------------------------------------------------------------------
+
+export const ticketTranscripts = pgTable('ticket_transcripts', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  channelId: text('channel_id').notNull().unique(),
+  channelName: text('channel_name').notNull(),
+  leadId: uuid('lead_id').references(() => leads.id),
+  buyerDiscordId: text('buyer_discord_id'),
+  // [{ at, authorId, author, bot, content, attachments: [filename] }], oldest first
+  messages: jsonb('messages').notNull(),
+  messageCount: integer('message_count').notNull(),
+  closedAt: timestamp('closed_at', { withTimezone: true }).notNull().defaultNow(),
+})

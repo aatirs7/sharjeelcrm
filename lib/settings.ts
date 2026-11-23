@@ -22,6 +22,10 @@ export interface AppSettings {
   // matched on the exact amount due (so a promo price can have its own link).
   // With no link for an amount, staff are pinged to send one by hand.
   cardPaymentLinks: CardPaymentLink[]
+  // Blitz's fee per card sale, in basis points (290 = 2.90%). Blitz doesn't
+  // report fees to other apps, so the CRM uses this to estimate the balance
+  // between balance checks. 0 means "not set" (balance shown before fees).
+  blitzFeeBps: number
 }
 
 export interface CardPaymentLink {
@@ -42,6 +46,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   roleOverrides: { admin: [], manager: [] },
   cryptoAddresses: [],
   cardPaymentLinks: [],
+  blitzFeeBps: 0,
 }
 
 export async function getSettings(): Promise<AppSettings> {
@@ -60,6 +65,7 @@ export async function getSettings(): Promise<AppSettings> {
       (map.get('cryptoAddresses') as AppSettings['cryptoAddresses']) ?? DEFAULT_SETTINGS.cryptoAddresses,
     cardPaymentLinks:
       (map.get('cardPaymentLinks') as AppSettings['cardPaymentLinks']) ?? DEFAULT_SETTINGS.cardPaymentLinks,
+    blitzFeeBps: (map.get('blitzFeeBps') as AppSettings['blitzFeeBps']) ?? DEFAULT_SETTINGS.blitzFeeBps,
   }
 }
 
