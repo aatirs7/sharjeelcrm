@@ -10,6 +10,7 @@ import {
   date,
   uuid,
   jsonb,
+  uniqueIndex,
   unique,
 } from 'drizzle-orm/pg-core'
 
@@ -690,4 +691,60 @@ export const ticketTranscripts = pgTable('ticket_transcripts', {
   messages: jsonb('messages').notNull(),
   messageCount: integer('message_count').notNull(),
   closedAt: timestamp('closed_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
+// ---------------------------------------------------------------------------
+// Crypto auto-confirm (lib/crypto). When a buyer picks crypto the bot quotes
+// an exact amount per coin that no other open order shares; a scanner watches
+// the shop's wallets and a payment of exactly that amount confirms the deal.
+// ---------------------------------------------------------------------------
+
+export const cryptoQuotes = pgTable(
+  'crypto_quotes',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    leadId: uuid('lead_id').notNull().references(() => leads.id),
+    asset: text('asset').notNull(), // BTC | ETH | USDT | SOL
+    // Exact amount in the asset's base unit: sats, wei, USDT micro-units (6
+    // decimals on every chain), lamports. Stored as a decimal string.
+    amountUnits: text('amount_units').notNull(),
+    usdCents: integer('usd_cents').notNull(), // what this quote is worth; recorded as the sale
+    tagCents: integer('tag_cents').notNull(), // taken off the price to make the amount unique
+    rateUsd: text('rate_usd'), // coin price used (null for USDT)
+    status: text('status').notNull().default('open'), // open | expired | paid | cancelled
+    expiresAt: timestamp('expires_at', { withTimezone: true }), // null = no price risk (USDT)
+    paidTx: text('paid_tx'),
+    paidAt: timestamp('paid_at', { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    uniqueIndex('crypto_quotes_open_amount').on(t.asset, t.amountUnits).where(sql`status = 'open'`),
+  ]
+)
+
+export const cryptoPayments = pgTable(
+  'crypto_payments',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    chain: text('chain').notNull(), // btc | eth | bsc | sol
+    txHash: text('tx_hash').notNull(),
+    asset: text('asset').notNull(),
+    amountUnits: text('amount_units').notNull(),
+    blockTime: timestamp('block_time', { withTimezone: true }).notNull(),
+    // matched | unmatched | late | duplicate | ignored (dust/spam) | already_paid
+    status: text('status').notNull(),
+    quoteId: uuid('quote_id').references(() => cryptoQuotes.id),
+    leadId: uuid('lead_id').references(() => leads.id),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex('crypto_payments_tx').on(t.chain, t.txHash, t.asset)]
+)
+
+export const cryptoScanState = pgTable('crypto_scan_state', {
+  chain: text('chain').primaryKey(),
+  since: timestamp('since', { withTimezone: true }).notNull(), // payments before this are history, never matched
+  cursor: text('cursor'), // last block (bsc) or newest signature (sol) scanned
+  lastOkAt: timestamp('last_ok_at', { withTimezone: true }),
+  lastError: text('last_error'),
+  alertedAt: timestamp('alerted_at', { withTimezone: true }),
 })

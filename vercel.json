@@ -8,6 +8,10 @@
     {
       "path": "/api/discord/poll",
       "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/cron/crypto",
+      "schedule": "*/5 * * * *"
     }
   ]
 }

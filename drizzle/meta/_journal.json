@@ -148,6 +148,13 @@
       "when": 1795418937932,
       "tag": "0020_blitz_ledger_transcripts",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1795422043170,
+      "tag": "0021_crypto_auto_confirm",
+      "breakpoints": true
     }
   ]
 }

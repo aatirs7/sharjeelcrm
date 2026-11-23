@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server'
 import crypto from 'node:crypto'
+import { cryptoAutoEnabled } from '@/lib/crypto/assets'
+import { cancelOpenQuotes, createQuotes, quoteMessage } from '@/lib/crypto/quotes'
 import { applyTicketTag, type TicketTag } from '@/lib/ticket-tag'
 import { and, eq, isNotNull, sql } from 'drizzle-orm'
 import { db } from '@/lib/db'
@@ -447,6 +449,32 @@ export async function POST(req: Request): Promise<NextResponse> {
           .update(leads)
           .set({ paymentMethod: 'crypto', paymentLink: null, stripeSessionId: null, status: 'waiting_payment' })
           .where(eq(leads.id, lead.id))
+        // Exact per-order amounts, so the payment confirms itself (lib/crypto).
+        // Falls back to the plain wallet list if quoting fails for any reason.
+        if (wallets.length > 0 && cryptoAutoEnabled()) {
+          try {
+            const quoted = await createQuotes(lead.id, price, wallets)
+            if (quoted.some((q) => q.amount)) {
+              await postToChannel(channelId, {
+                embeds: [
+                  {
+                    title: '🪙 Pay with crypto',
+                    description: quoteMessage(`**${product.name}**: ${priceText}`, quoted, formatCents(price)).slice(0, 4000),
+                    color: 0xf59e0b,
+                  },
+                ],
+              })
+              await postAdminNotify(
+                '🪙 Crypto payment requested',
+                [dealLine, customerLine, productLine, `Exact amounts sent for ${quoted.filter((q) => q.amount).map((q) => q.coin).join(', ')}. The payment will be confirmed automatically.`],
+                0xf59e0b
+              )
+              return NextResponse.json({ type: 4, data: { content: 'Your exact amounts are posted above. Your payment is confirmed automatically once it arrives.', flags: EPHEMERAL } })
+            }
+          } catch (err) {
+            console.error('[crypto] quoting failed, falling back to plain wallets', err)
+          }
+        }
         if (wallets.length > 0) {
           const list = wallets
             .map((w) => `**${w.coin}**${w.network ? ` · ${w.network}` : ''}\n\`${w.address}\``)
@@ -508,6 +536,7 @@ export async function POST(req: Request): Promise<NextResponse> {
       }
       if (action === 'paid') {
         await db.update(leads).set({ status: 'payment_received', ...firstResp }).where(eq(leads.id, lead.id))
+        await cancelOpenQuotes(lead.id).catch(() => {})
         // Tell the buyer in their ticket too, with the same delivery promise the
         // card flow gives, so crypto/manual payments are not left silent.
         await postToChannel(channelId, {
