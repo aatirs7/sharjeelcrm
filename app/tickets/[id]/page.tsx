@@ -294,7 +294,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
         </div>
       </div>
 
-      {transcripts.length > 0 && <TicketTranscripts items={transcripts} currentLeadId={lead.id} />}
+      {transcripts.length > 0 && <TicketTranscripts items={transcripts} currentLeadId={lead.id} hasOpenTicket={!!lead.discordChannelId} />}
     </div>
   )
 }

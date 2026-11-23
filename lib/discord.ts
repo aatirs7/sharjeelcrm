@@ -442,3 +442,44 @@ export async function postTicketNotice(
     ],
   })
 }
+
+/** Post a message and return its id (null on failure). */
+export async function postMessage(
+  channelId: string,
+  payload: { content?: string; embeds?: unknown[]; components?: unknown[] }
+): Promise<string | null> {
+  const res = await dpost(`/channels/${channelId}/messages`, payload)
+  if (!res.ok) return null
+  return ((await res.json()) as { id: string }).id
+}
+
+/** Post a message with a text file attached (e.g. a saved ticket chat). */
+export async function postTextFile(
+  channelId: string,
+  payload: { content?: string; embeds?: unknown[] },
+  filename: string,
+  text: string
+): Promise<boolean> {
+  const form = new FormData()
+  form.append('payload_json', JSON.stringify({ ...payload, attachments: [{ id: 0, filename }] }))
+  form.append('files[0]', new Blob([text], { type: 'text/plain; charset=utf-8' }), filename)
+  const res = await fetch(`${API}/channels/${channelId}/messages`, { method: 'POST', headers: authHeaders(), body: form })
+  return res.ok
+}
+
+/** True for Ticket Tool or this CRM's own bot. */
+export function isTicketBot(userId: string | null | undefined): boolean {
+  return userId === TICKET_TOOL_ID || userId === SELF_BOT_ID
+}
+
+/** The non-bot members given access to a ticket channel (the buyer, typically). */
+export function channelMemberIds(channel: DiscordChannel): string[] {
+  return (channel.permission_overwrites ?? [])
+    .filter((o) => o.type === 1 && !isTicketBot(o.id))
+    .map((o) => o.id)
+}
+
+/** All channels in the guild. */
+export async function listGuildChannels(guildId: string): Promise<DiscordChannel[]> {
+  return dget<DiscordChannel[]>(`/guilds/${guildId}/channels`)
+}

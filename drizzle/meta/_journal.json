@@ -155,6 +155,13 @@
       "when": 1795422043170,
       "tag": "0021_crypto_auto_confirm",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1795469478204,
+      "tag": "0022_ticket_idle_notices",
+      "breakpoints": true
     }
   ]
 }

@@ -748,3 +748,17 @@ export const cryptoScanState = pgTable('crypto_scan_state', {
   lastError: text('last_error'),
   alertedAt: timestamp('alerted_at', { withTimezone: true }),
 })
+
+// ---------------------------------------------------------------------------
+// ticket_idle_notices — the idle-ticket cleanup's memory: the "closes in 48
+// hours" warning posted in a quiet ticket (kind 'warning', with its message id,
+// so any reply after it cancels the close), or the last time staff were pinged
+// about a customer left waiting (kind 'staff_ping').
+// ---------------------------------------------------------------------------
+
+export const ticketIdleNotices = pgTable('ticket_idle_notices', {
+  channelId: text('channel_id').primaryKey(),
+  kind: text('kind').notNull(), // warning | staff_ping
+  messageId: text('message_id'),
+  notedAt: timestamp('noted_at', { withTimezone: true }).notNull().defaultNow(),
+})

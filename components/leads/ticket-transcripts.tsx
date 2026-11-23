@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import type { SavedMessage } from '@/lib/ticket-cleanup'
+import { PostSavedChatButton } from '@/components/leads/post-saved-chat-button'
 
 export interface TranscriptView {
   id: string
@@ -24,7 +25,15 @@ function when(iso: string | Date) {
  * any other closed tickets from the same buyer. Admin only, since a chat can
  * hold the account login that was handed over.
  */
-export function TicketTranscripts({ items, currentLeadId }: { items: TranscriptView[]; currentLeadId: string }) {
+export function TicketTranscripts({
+  items,
+  currentLeadId,
+  hasOpenTicket,
+}: {
+  items: TranscriptView[]
+  currentLeadId: string
+  hasOpenTicket: boolean
+}) {
   return (
     <section className="space-y-3">
       <div className="text-center">
@@ -55,6 +64,11 @@ export function TicketTranscripts({ items, currentLeadId }: { items: TranscriptV
                 {t.messageCount} messages · closed {when(t.closedAt)}
               </span>
             </summary>
+            {hasOpenTicket && t.leadId !== currentLeadId && (
+              <div className="flex justify-center border-t px-4 py-2">
+                <PostSavedChatButton transcriptId={t.id} leadId={currentLeadId} />
+              </div>
+            )}
             <ol className="space-y-3 border-t px-4 py-3">
               {t.messages.map((m, i) => (
                 <li key={i} className="text-sm">
