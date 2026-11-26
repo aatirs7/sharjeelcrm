@@ -13,6 +13,7 @@ import {
   type TicketMessage,
 } from '@/lib/discord'
 import { postAdminNotify } from '@/lib/discord-posts'
+import { crmBaseUrl } from '@/lib/app-url'
 
 /**
  * Auto-close idle Discord tickets. Discord caps a server at 500 channels and
@@ -130,6 +131,7 @@ export async function closeIdleTickets(cap: number) {
     ids.length
       ? db
           .select({
+            id: leads.id,
             channelId: leads.discordChannelId,
             status: leads.status,
             ticketType: leads.ticketType,
@@ -192,8 +194,13 @@ export async function closeIdleTickets(cap: number) {
       await postAdminNotify(
         '⏳ Customer waiting for a reply',
         [
-          `Ticket: <#${c.id}>`,
+          // The bare mention shows as "#unknown" to anyone outside the private
+          // ticket, so spell out the name and link straight to it.
+          `Ticket: <#${c.id}> (${c.name})`,
           lead ? `Deal: DEAL-${lead.dealNumber} (${lead.discordUsername})` : '',
+          [`[Open in Discord](https://discord.com/channels/${guildId}/${c.id})`, lead ? `[Open in CRM](${crmBaseUrl()}/tickets/${lead.id})` : '']
+            .filter(Boolean)
+            .join(' · '),
           `Their last message was ${days} day${days === 1 ? '' : 's'} ago and nobody has answered. The ticket stays open until someone does.`,
         ],
         0xf59e0b
