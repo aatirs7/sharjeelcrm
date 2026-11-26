@@ -246,7 +246,7 @@ export async function POST(req: Request): Promise<NextResponse> {
           },
         ],
       })
-      await ingestTicketLead({
+      const ingested = await ingestTicketLead({
         discordUsername: user.username ?? 'buyer',
         discordUserId: user.id,
         discordChannelId: channelId,
@@ -258,7 +258,16 @@ export async function POST(req: Request): Promise<NextResponse> {
       })
       await postAdminNotify(
         '🎫 New ticket',
-        [`Deal: DEAL-${dealNumber}`, `Type: ${cfg.label}`, `Customer: ${user.username ?? user.id}`, `Channel: <#${channelId}>`],
+        // The channel mention alone shows as "#unknown" for anyone who can't see
+        // the private ticket (or once it is closed), so also spell out the
+        // channel name and link straight to the deal in the CRM.
+        [
+          `Deal: DEAL-${dealNumber}`,
+          `Type: ${cfg.label}`,
+          `Customer: ${user.username ?? user.id}`,
+          `Channel: <#${channelId}> (ticket-${dealNumber})`,
+          `[Open in Discord](${link}) · [Open in CRM](${crmBaseUrl()}/tickets/${ingested.leadId})`,
+        ],
         0x3b82f6
       )
       await postTicketControls(channelId)
