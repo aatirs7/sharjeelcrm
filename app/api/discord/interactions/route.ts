@@ -334,7 +334,13 @@ export async function POST(req: Request): Promise<NextResponse> {
       const paidLead = await resolvePromoFromTicket(lead, channelId)
       const price = effectivePrice(product.priceCents, paidLead)
       const priceText = priceLine(product.priceCents, paidLead)
-      const dealLine = `Deal: DEAL-${lead.dealNumber}`
+      // Every payment alert links back to this ticket and its CRM deal page.
+      const ticketHref =
+        lead.ticketLink ?? (interaction.guild_id ? `https://discord.com/channels/${interaction.guild_id}/${channelId}` : null)
+      const dealLine = [
+        `Deal: DEAL-${lead.dealNumber}`,
+        [ticketHref ? `[Open in Discord](${ticketHref})` : '', `[Open in CRM](${crmBaseUrl()}/tickets/${lead.id})`].filter(Boolean).join(' · '),
+      ].join('\n')
       const customerLine = `Customer: ${lead.discordUsername}`
       const productLine = `Product: ${product.name} (${formatCents(price)}${price !== product.priceCents ? `, promo ${paidLead.promoCodeUsed}` : ''})`
 
